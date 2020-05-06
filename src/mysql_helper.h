@@ -4,9 +4,8 @@ typedef enum SQL_ErrorCodes {
 	ACCESS_GRANTED = 0,
 	ACCESS_DENIED = 1,
 	ACCESS_FAILURE = 2,
+	ACCESS_CRYPTO_FAILURE = 3
 }
-
-#define MAX_DEBUG_MSG 200
 
 #define MASTER_PSK_USERNAME "master_psk"
 
@@ -25,7 +24,7 @@ typedef enum SQL_ErrorCodes {
 void db_init();
 void db_startup();
 void db_shutdown();
-void db_cleanu();
+void db_cleanup();
 
 void prepare_statements(MYSQL * sql_handler);
 void close_statements(void);
@@ -33,11 +32,3 @@ void close_statements(void);
 int psk_master_auth(const char * password, char * out_key);
 int psk_client_auth(const char * identity, char * psk_key);
 int unpwd_client_auth(const char * username, const char * password);
-
-void db_log_info();
-void db_log_error();
-void db_log_warning();
-
-/* XXX : For now, there is no restriction whatsoever about sub and pub 
-//int acl_client_check(MYSQL * sql_handler, int , char *, char *, char *); 
-
