@@ -11,11 +11,16 @@
 #include "mysql_helper.h"
 #include "crypto_helper.h"
 
+MYSQL * db_handler;
+
 MYSQL_STMT * stmt_salt;
 MYSQL_STMT * stmt_psk;
 MYSQL_STMT * stmt_auth;
 
-void bind_param(MYSQL_STMT *stmt, MYSQL_BIND *bnd, int row_count, ...){
+char * master_key[KEY_LEN];
+
+void stmt_bind_param(MYSQL_STMT *stmt, MYSQL_BIND *bnd, int row_count, ...)
+{
 	memset(bnd, 0, sizeof(MYSQL_BIND)*row_count);
 
 	va_list va;
@@ -28,29 +33,32 @@ void bind_param(MYSQL_STMT *stmt, MYSQL_BIND *bnd, int row_count, ...){
 	}
 	
 	va_end(va);
-	mysql_stmt_bind_param(bind, bnd); 
+	mysql_stmt_bind_param(stmt, bnd); 
 }
 
-void bind_result(MYSQL_STMT *stmt, MYSQL_BIND *bnd, int row_count, ...){
+void stmt_bind_result(MYSQL_STMT *stmt, MYSQL_BIND *bnd, int row_count, ...)
+{
 	memset(bnd, 0, sizeof(MYSQL_BIND)*row_count);
 
 	va_list va;
 	va_start(va, row_count);
 
 	for(int i = 0; i < row_count; i++){
-		bnd[i].buffer_type =  	
-		bnd[i].buffer =  	
-		bnd[i].buffer_length =  	
+		bnd[i].buffer_type = va_arg(va, int);  	
+		bnd[i].buffer = va_arg(va, void *);	
+		bnd[i].buffer_length = va_arg(va, long); 	
 
-		bnd[i].length =  	
+		void *len = va_arg(va, void *);
+		void *err = va_arg(va, void *);
+		void *in = va_arg(in, void *);
 
-		bnd[i].error =  	
-
-		bnd[i].is_null =  	
+		if(len) bnd[i].length = len;	
+		if(err) bnd[i].error = err;  	
+		if(in) 	bnd[i].is_null = in;
 	}
 
 	va_end(va);
-	mysql_stmt_bind_result(bind, bnd); 
+	mysql_stmt_bind_result(stmt, bnd); 
 }
 
 
@@ -72,7 +80,8 @@ void db_cleanup()
 
 }
 
-void prepare_statements(MYSQL * sql_handler){
+void prepare_statements(MYSQL * sql_handler)
+{
 	/* Prepare the Salt statement */
 	stmt_salt = mysql_stmt_init(sql_handler); 
 	stmt_salt = mysql_stmt_prepare(stmt_salt, 
@@ -96,7 +105,8 @@ void prepare_statements(MYSQL * sql_handler){
 }
 
 
-void close_statements(){
+void close_statements()
+{
 	/* Close all previously prepared statements */
 	mysql_log_info("Closing all statements");
 	mysql_stmt_close(stmt_salt);
@@ -104,7 +114,8 @@ void close_statements(){
 	mysql_stmt_close(stmt_auth);
 }
 
-int psk_master_auth(const char * password, char * out_key){
+int psk_master_auth(const char * password, char * out_key)
+{
 	char * username = MASTER_PSK_USERNAME;
 
 	switch(unpwd_client_auth( (const char *) username, password)){
@@ -124,45 +135,30 @@ int psk_master_auth(const char * password, char * out_key){
 	}	
 }
 
-int unpwd_client_auth(const char * username, const char * password){
-	char fetch_debug_str[MAX_DEBUG_MSG];
-	int return_code = 0;
+int get_salt(const char *username, char *salt_buf)
+{
+	MYSQL_BIND salt_query_bind[1], salt_result_bind[1];
+	long salt_len; 
 
-	long salt_length; 
-	uint64_t result;
-	mysql_bool auth_is_null;	
+	stmt_bind_param(stmt_salt, salt_query_bind, 1,
+			MYSQL_TYPE_STRING, username, strlen(username)); 
 
-	/* Binding and Execution of the Salt Prepared Statement */
-	char * salt_buffer = (char *)malloc(sizeof(char) * (SALT_LEN+1));
-	char * hash_buffer = (char *)malloc(sizeof(char)* (HASH_LEN+1));
+	stmt_bind_result(stmt_salt, salt_result_bind, 1, 
+		MYSQL_TYPE_BINARY, salt_buf, SALT_LEN, salt_len, NULL, NULL);
 
-	MYSQL_BIND salt_result_bind[1];
-	memset(salt_result_bind, 0, sizeof(salt_result_bind));
-
-	salt_result_bind[0].buffer_type=MYSQL_TYPE_BINARY;
-	salt_result_bind[0].buffer = salt_buffer;
-	salt_result_bind[0].buffer_length = SALT_LENGTH;
-	salt_result_bind[0].length = &salt_length;
-
-	mysql_stmt_bind_result(stmt_salt, salt_result_bind);
 	mysql_stmt_execute(stmt_salt);	
 
-
-	/* Fetching the current row (there should only be one, but we are not 
-	 * checking that there is indeed only one output row) 
-	 */  
 	switch(mysql_stmt_fetch(stmt_salt)){
 	case(0):
-		if(salt_length != SALT_LEN){
-			mysql_log_error("(Username : %s) The fetched salt is \
-					not of the expected size \
-					Fetched : %d || Expected : %d",
+		if(salt_len != SALT_LEN){
+			mysql_log_error("(Username : %s) The fetched salt is "
+					"not of the expected size :: "
+					"Fetched : %d || Expected : %d",
 					username,
-					salt_length,
+					salt_len,
 					SALT_LEN);
 
-			return_code = ACCESS_FAILURE;
-			goto unpwd_cleanup;
+			return ACCESS_FAILURE;
 		}
 		break;
 
@@ -172,74 +168,83 @@ int unpwd_client_auth(const char * username, const char * password){
 				username, 
 				err);
 
-		return_code = ACCESS_FAILURE;
-		goto unpwd_cleanup;
+		return ACCESS_FAILURE;
 	
 	case(MYSQL_DATA_TRUNCATED):
-		mysql_log_error("(Username : %s) : The Salt has been truncated \
-			       	when fetched\n", 
+		mysql_log_error("(Username : %s) : The Salt has been truncated "
+			       	"when fetched\n", 
 				username);
 
-		return_code = ACCESS_FAILURE;
-		goto unpwd_cleanup;
+		return ACCESS_FAILURE;
 
 	case(MYSQL_NO_DATA):
-		return_code = ACCESS_DENIED
-		goto unpwd_cleanup;
-	}
+		return ACCESS_DENIED;
 
-	/* Hash the password using Argon2 */ 
-	if(hash_password(password, salt_buffer, hash_buffer)){
-		return_code = ACCESS_CRYPTO_FAILURE;
-		goto unpwd_cleanup;
 	}
+}
 
-	/* Binding and Execution of the Auth Query  */
+int pw_check(const char *username, const char *hash_buff, int *p_result)
+{
 	MYSQL_BIND auth_query_bind[1];
 	MYSQL_BIND auth_result_bind[1];
 
-	memset(auth_query_bind, 0, sizeof(auth_query_bind));
-	memset(auth_result_bind, 0, sizeof(auth_result_bind));
+	mysql_bool auth_is_null;
 
-	auth_query_bind[0].buffer_type=MYSQL_TYPE_BINARY;
-	auth_query_bind[0].buffer = hash_buffer;
-	auth_query_bind[0].buffer_length = strlen(hash_buffer);
-	
-	auth_result_bind[0].buffer_type=MYSQL_TYPE_LONGLONG;
-	auth_result_bind[0].buffer = (char *)&result;
-	auth_result_bind[0].is_null = &auth_is_null;	
+	stmt_bind_param(stmt_auth, auth_query_bind, 1,
+		MYSQL_TYPE_BINARY, hash_buf, HASH_LEN+1);
 
-	mysql_stmt_bind_param(stmt_auth, auth_query_bind);
-	mysql_stmt_bind_result(stmt_auth, auth_result_bind);
+	stmt_bind_result(stmt_auth, auth_result_bind, 1,
+		MYSQL_TYPE_LONGLONG, p_result, NULL, NULL, &is_null); 
 
 	mysql_stmt_execute(stmt_auth);
 
 	switch(mysql_stmt_fetch(stmt_auth)){
 	case(0):
 		if(auth_is_null){
-			mysql_log_error("(Username : %s) The Hash count query \
-					returned a null row",
+			mysql_log_error("(Username : %s) The Hash count query "
+					"returned a null row",
 					username);
 
-			return_code = ACCESS_FAILURE;
-			goto unpwd_cleanup;
+			return ACCESS_FAILURE;
 		}
 		break;
 
 	case(1):
 		char * err = mysql_stmt_errno(stmt_auth);
-
 		mysql_log_error("(Username : %s) Result Fetch Error : %s \n", 
 				username, 
 				err);
 
-		return_code = ACCESS_FAILURE;
-		goto unpwd_cleanup;	
+		return ACCESS_FAILURE;
+	
+	default:
+		return ACCESS_DENIED;
+
 	}
+}
+
+int unpwd_client_auth(const char * username, const char * password)
+{
+	int return_code = 0;
+	long long int result;
+
+	char * salt_buf = (char *)malloc(sizeof(char) * (SALT_LEN+1));
+	char * hash_buf = (char *)malloc(sizeof(char)* (HASH_LEN+1));
+
+	return_code = fetch_salt(username, salt_buf);
+	if(return_code)
+		goto unpwd_cleanup;	
+
+	if(hash_password(password, salt_buf, hash_buf)){
+		return_code = ACCESS_CRYPTO_FAILURE;
+		goto unpwd_cleanup;
+	}
+	
+	return_code = pw_check(username, hash_buff, &result);
 
 unpwd_cleanup:
-	free(salt_buffer);
-	free(hash_buffer);
+	free(salt_buf);
+	free(hash_buf);
 
 	if(return_code) 
 		return return_code;
@@ -247,39 +252,18 @@ unpwd_cleanup:
 	return (result == 1) ? ACCESS_GRANTED : ACCESS_DENIED;
 }
 
-int psk_client_auth(const char * master_key, const char * identity, char * psk_key){
-	char fetch_debug_str[MAX_DEBUG_MSG];
-	int return_code = 0;
-
+int fetch_psk_key(const char * identity, char * iv, char * key)
+{
+	MYSQL_BIND psk_query_bind[1], psk_result_bind[2];
 	int length[2], error[2];
 
-	char * init_vector = (char *) malloc(sizeof(char) * IV_LEN); 
-	char * cyphered_key = (char *) malloc(sizeof(char) * KEY_LEN);
+	stmt_bind_param(stmt_psk, psk_query_bind, 1,
+		MYSQL_TYPE_STRING, identity, strlen(identity));
 
-	MYSQL_BIND psk_query_bind[1];
-	MYSQL_BIND psk_result_bind[2];
-
-	memset(psk_query_bind, 0, sizeof(psk_query_bind));
-	memset(psk_result_bind, 0, sizeof(psk_result_bind));
-	
-	psk_query_bind[0].buffer_type = MYSQL_TYPE_STRING;
-	psk_query_bind[0].buffer = identity;
-	psk_query_bind[0].buffer_length = strlen(identity);
-	
-	psk_result_bind[0].buffer_type=MYSQL_TYPE_BLOB;
-	psk_result_bind[0].buffer = init_vector;
-	psk_result_bind[0].buffer_length = IV_LEN;
-	psk_result_bind[0].length = &length[0];	
-	psk_result_bind[0].error = &error[0];	
-
-	psk_result_bind[1].buffer_type=MYSQL_TYPE_BLOB;  
-	psk_result_bind[1].buffer = cyphered_key;
-	psk_result_bind[1].buffer_length = KEY_LEN;
-	psk_result_bind[1].length = &length[1];	
-	psk_result_bind[1].error = &error[1];	
-
-	mysql_stmt_bind_param(stmt_psk, psk_query_bind);
-	mysql_stmt_bind_result(stmt_psk, psk_result_bind);
+	stmt_bind_result(stmt_psk, psk_result_bind, 2,
+		MYSQL_TYPE_BINARY, init_vector, IV_LEN, length, error, NULL,
+		MYSQL_TYPE_BINARY, cyphered_key, KEY_LEN, length+1, error+1, NULL
+		);
 
 	mysql_stmt_execute(stmt_psk);	
 
@@ -287,36 +271,48 @@ int psk_client_auth(const char * master_key, const char * identity, char * psk_k
 	switch(mysql_stmt_fetch(stmt_psk)){
 	case(0):
 		if(length[0] != KEY_LEN || length[1] != SALT_LEN){
-			mysql_log_error("PSK key and/or IV are not the right size");
-			return_code = ACCESS_FAILURE;
-			goto psk_client_cleanup;
+			mysql_log_error("(Identity %s) : PSK key and/or IV are "
+				       "not the right size", identity);
+			return ACCESS_FAILURE;
 		}
 		break;		 
 
 	case(1):
-		mysql_log_error(""); 
-		return_code = ACCESS_FAILURE;
-		goto psk_client_cleanup;
+		char * err = mysql_stmt_errno(stmt_psk);
+		mysql_log_error("(Identity %s) : Error when fetching result :"
+			       " %s", identity, err); 
+		return ACCESS_FAILURE;
 
 	case(MYSQL_DATA_TRUNCATED):
 		mysql_log_error("(Identity : %s) PSK key or IV truncated");
-		return_code = ACCESS_FAILURE;
-		goto psk_client_cleanup;
+		return ACCESS_FAILURE;
 
 	case(MYSQL_NO_DATA):
-		return_code = ACCESS_DENIED;
-		goto psk_client_cleanup;
+		return ACCESS_DENIED;
+	
+	default:
+		return ACCESS_DENIED;
+
 	}
+}	
 
-	/* Decypher the PSK */
-	int decypher_error = decypher_key(master_key, cyphered_key, init_vector, psk_key);
+int psk_client_auth(const char * identity, char * psk_key)
+{
+	int return_code = 0;
 
-psk_client_cleanup:
+	char * init_vector = (char *) malloc(sizeof(char) * IV_LEN); 
+	char * cyphered_key = (char *) malloc(sizeof(char) * KEY_LEN);
+
+	return_code = fetch_psk_key(identity, init_vector, cyphered_key);
+
 	free(init_vector);
-	free(cyphered_key);
 
-	if(return_code) 
+	if(return_code){ 
+		free(cyphered_key);
 		return return_code;
-
-	return decypher_error ? ACCESS_CRYPTO_FAILURE : ACCESS_GRANTED;	
+	} else {
+		int decypher_error = decypher_key(master_key, cyphered_key, init_vector, psk_key);
+		free(cyphered_key);
+		return decypher_error ? ACCESS_CRYPTO_FAILURE : ACCESS_GRANTED;	
+	}
 }
