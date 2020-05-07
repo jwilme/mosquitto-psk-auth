@@ -39,6 +39,8 @@ int mosquitto_auth_plugin_version(void){
  */
 int mosquitto_auth_plugin_init(void **user_data, struct mosquitto_opt *opts, int opt_count){
 	/* For the moment, options have not effect */
+	void(opts);
+	void(opt_count);
 
 	static MYSQL * db_handler = mysql_init(NULL); 	
 	

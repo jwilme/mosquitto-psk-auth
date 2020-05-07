@@ -17,7 +17,7 @@ MYSQL_STMT * stmt_salt;
 MYSQL_STMT * stmt_psk;
 MYSQL_STMT * stmt_auth;
 
-char * master_key[KEY_LEN];
+char * psk_key;
 
 void stmt_bind_param(MYSQL_STMT *stmt, MYSQL_BIND *bnd, int row_count, ...)
 {
@@ -62,22 +62,85 @@ void stmt_bind_result(MYSQL_STMT *stmt, MYSQL_BIND *bnd, int row_count, ...)
 }
 
 
-void db_init()
+int db_init(void **user_data)
 {
+	MYSQL * db_handler = mysql_init(NULL);
 
+	if(!db_handler){
+		mysql_log_error("Could not initialize the database handler");
+		return ACCESS_FAILURE;
+	}
+	psk_key = (char *)calloc(sizeof(char) * (KEY_LEN + 1));	
+
+	return ACCESS_GRANTED;
 }
 
 void db_startup()
 {
+	//Authenticate to the database
+	for(int i = 0; i <= RETRY_LIMITS; i++){
+		if(i == RETRY_LIMITS){
+			mysql_log_error("Max number of MySQL Authentication "
+					"Attempt reached");
+			return ACCESS_GRANTED;
+		}
+	
+		char * db_password;	
+		/// TODO : HOW TO PROMPT FOR PASSWORD
 
+		int err = mysql_real_connect( (MYSQL *)user_data, 
+				NULL, 
+				"mqtt_broker", 
+				db_password,
+		    		"test", 
+				0, 
+				"/run/mysqld/mysqld.sock", 
+				0
+				); ///TODO : REMPLACER LES ARGUMENTS DES DEFINES
+					///OU AUTRE CHOSE
+
+		if(err){
+			mysql_log_info("Successfuly connected to the Database");
+			break;
+		} else{
+			mysql_log_error("Unable to connect to the DB : %s",
+					mysql_log_warning((MYSQL *)user_data);
+		}
+	}
+	
+	prepare_statements((MYSQL *)user_data);
+	
+
+	for(int i = 0; i <= RETRY_LIMITS; i++){
+		if(i == RETRY_LIMITS){
+			mysql_log_error("Max attempt of psk authentication "
+					"reached");
+			free(psk_key);
+			return PLUGIN_FAILURE;
+		}
+	
+		char * psk_password;	
+		/// TODO : HOW TO PROMPT FOR PASSWORD	
+
+		if(!psk_master_auth(psk_password, psk_key)) {	
+			return PLUGIN_SUCCESS;	
+		}
+	}
 }
-void db_shutdown()
-{
 
+void db_shutdown(void *user_data)
+{
+	mysql_log_info("Disconnecting from the database");
+	mysql_reset_connection((MQTT *)user_data);
+	mysql_close((MQTT *)user_data);
+
+	return ACCESS_GRANTED;
 }
 void db_cleanup()
 {
-
+	mysql_log_info("Ending MySQL Library");
+	mysql_library_end();
+	return ACCESS_GRANTED;
 }
 
 void prepare_statements(MYSQL * sql_handler)
