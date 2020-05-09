@@ -4,8 +4,23 @@
 #include "plugin.h"
 #include "mosquitto_plugin.h"
 
-#include "mysql_helper.h"
-#include "crypto_helper.h"
+#include "mysql_binding.h"
+#include "auth.h"
+#include "crypto.h"
+
+#define LOG_PLUGIN_ERROR 	"[PLUGIN - ERROR] ::"
+#define LOG_PLUGIN_WARNING 	"[PLUGIN - WARNING] ::"
+#define LOG_PLUGIN_INFO 	"[PLUGIN - INFO] ::"
+
+#define plugin_log_error(char * fmt, ...) \
+	plugin_log(MOSQ_LOG_WARNING, LOG_PLUGIN_ERROR, char *fmt, ...)
+
+#define plugin_log_warning(char * fmt, ...) \
+	plugin_log(MOSQ_LOG_ERROR, LOG_PLUGIN_WARNING, char *fmt, ...)
+
+#define plugin_log_info(char * fmt, ...) \
+	plugin_log(MOSQ_LOG_INFO, LOG_PLUGIN_INFO, char *fmt, ...)
+
 
 /*
  * Function: mosquitto_auth_plugin_version
@@ -42,15 +57,8 @@ int mosquitto_auth_plugin_init(void **user_data, struct mosquitto_opt *opts, int
 	void(opts);
 	void(opt_count);
 
-	static MYSQL * db_handler = mysql_init(NULL); 	
-	
-	if(!db_handler){
-		mosquitto_log_printf(MOSQ_LOG_ERR, "Could not initialize the database handler\n");
-		return PLUGIN_FAILURE;
-	}
-
-	user_data = (void *) &db_handler; 
-	return PLUGIN_SUCCESS;
+	int err = db_init(user_data);
+	return err == ACCESS_GRANTED ? PLUGIN_SUCCESS : PLUGIN_FAILURE;	
 }
 
 /*
@@ -73,8 +81,8 @@ int mosquitto_auth_plugin_init(void **user_data, struct mosquitto_opt *opts, int
  *	Return >0 on failure.
  */
 int mosquitto_auth_plugin_cleanup(void *user_data, struct mosquitto_opt *opts, int opt_count){
+	db_cleanup();	
 	mosquitto_log_printf(MOSQ_LOG_INFO, "The plugin is shutting down, goodbye! \n");
-	mysql_library_end();
 
 	return PLUGIN_SUCCESS;
 }
@@ -105,52 +113,11 @@ int mosquitto_auth_plugin_cleanup(void *user_data, struct mosquitto_opt *opts, i
  *	Return >0 on failure.
  */
 int mosquitto_auth_security_init(void *user_data, struct mosquitto_opt *opts, int opt_count, bool reload){
-	for(int i = 0; i <= RETRY_LIMITS; i++){
-		if(i == RETRY_LIMITS){
-			mosquitto_log_printf(MOSQL_LOG_ERR, "Max number of \
-					MySQL Authentication Attempt \
-					reached\n");
-			return PLUGIN_FAILURE;
-		}
-	
-		//Prompt for password in Terminal	
-		char * db_password;	
-		// XXX XXX XXX : How to prompt for a password a temp disable echo on the terminal?
-
-		// Open connection to the database
-		if(mysql_real_connect( (MYSQL *)user_data, NULL, "mqtt_broker", db_password,
-		    "test", 0, "/run/mysqld/mysqld.sock",0)){	
-			mosquitto_log_printf(MOSQL_LOG_INFO, "Successfully \
-					logged in the MySQL Database\n");
-			break;
-		}
-
-		else{
-			mosquitto_log_printf(MOSQ_LOG_ERR, "Connection to \
-					the database failed : %s\n",
-					mysql_error( (MYSQL *)user_data );
-		}
+	if(reload){
+		plugin_log_info("Reloading the DB Plugin");
 	}
-
-	prepare_statements((MYSQL *)user_data);
-	psk_key = (char *)malloc(sizeof(char) * (KEY_LEN + 1));	
-
-	for(int i = 0; i <= RETRY_LIMITS; i++){
-		if(i == RETRY_LIMITS){
-			mosquitto_log_printf(MOSQ_LOG_ERR, "Max attempt of \
-					psk authentication reached\n");
-			free(psk_key);
-			return PLUGIN_FAILURE;
-		}
-	
-		//Prompt for password in Terminal	
-		char * psk_password;	
-		// XXX XXX XXX : How to prompt for a password a temp disable echo on the terminal?
-		
-		if(!psk_master_auth(psk_password, psk_key)) {	
-			return PLUGIN_SUCCESS;	
-		}
-	}
+	int err = db_startup(user_data);
+	return err == ACCESS_GRANTED ? PLUGIN_SUCCESS : PLUGIN_FAILURE;
 }
 
 /* 
@@ -180,11 +147,8 @@ int mosquitto_auth_security_init(void *user_data, struct mosquitto_opt *opts, in
  */
 int mosquitto_auth_security_cleanup(void *user_data, struct mosquitto_opt *opts, int opt_count, bool reload){
 	//Disconnect and reset the MySQL connection
-	mosquitto_log_printf(MYSQL_LOG_INFO, "Disconnecting from the database\n");	
-	(void)mysql_reset_connection((MQTT *)user_data);
-	mysql_close((MQTT *)user_data);
-
-	return PLUGIN_SUCCESS;
+	int err = db_shutdown(user_data);
+	return err == ACCESS_GRANTED ? PLUGIN_SUCCESS : PLUGIN_FAILURE;
 }
 
 /*
@@ -232,9 +196,18 @@ int mosquitto_auth_acl_check(void *user_data, int access, struct mosquitto *clie
  *	MOSQ_ERR_PLUGIN_DEFER if your plugin does not wish to handle this check.
  */
 int mosquitto_auth_unpwd_check(void *user_data, struct mosquitto *client, const char *username, const char *password){
-	// XXX : Hash the Password and Query for the couple username + password + ClientID
-	// FIXME : For the time being, allow all :
-	return MOSQ_ERR_SUCCESS;	
+	switch(unpwd_client_auth(username, password)){
+
+	case(ACCESS_GRANTED):
+		return MOSQ_ERR_SUCCESS;
+
+	case(ACCESS_DENIED):
+		plugin_log_warning("Authentication denied for user '%s'");
+		return MOSQ_ERR_AUTH;
+
+	default:
+		return MOSQ_ERR_UNKNOWN; 
+	}	
 }
 
 /*
@@ -263,11 +236,16 @@ int mosquitto_auth_unpwd_check(void *user_data, struct mosquitto *client, const 
  *	Return MOSQ_ERR_PLUGIN_DEFER if your plugin does not wish to handle this check.
  */
 int mosquitto_auth_psk_key_get(void *user_data, struct mosquitto *client, const char *hint, const char *identity, char *key, int max_key_len){
-	// XXX : Look for an existing identity in the db, fetch the cyphered key and the, 
-	// 	 decypher it and send the hint to the client.
-	// FIXME : For the time being, said that it has been a real success.  
+	switch(psk_client_auth(identity, key)){
+	case(ACCESS_GRANTED):
+		return 0;
 
-	return PLUGIN_SUCCESS;
+	case(ACCESS_DENIED):
+		plugin_log_info("Identity '%s' not found in the DB");
+		return 1;
+
+	default:
+		return 2; 
+	
+	}
 }
-
-

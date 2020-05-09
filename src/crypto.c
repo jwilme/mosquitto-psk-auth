@@ -10,7 +10,23 @@
 #include "mosquitto.h"
 #include "mosquitto_broker.h"
 
-#include "crypto_helper.h"
+#include "crypto.h"
+#include "plugin_log.h"
+
+#define LOG_CRYPTO_ERROR 	"[CRYPTO - ERROR] ::"
+#define LOG_CRYPTO_WARNING 	"[CRYPTO - WARNING] ::"
+#define LOG_CRYPTO_INFO 	"[CRYPTO - INFO] ::"
+
+#define crypto_log_error(char * fmt, ...) \
+	plugin_log(MOSQ_LOG_WARNING, LOG_CRYPTO_ERROR, char *fmt, ...)
+
+#define crypto_log_warning(char * fmt, ...) \
+	plugin_log(MOSQ_LOG_ERROR, LOG_CRYPTO_WARNING, char *fmt, ...)
+
+#define crypto_log_info(char * fmt, ...) \
+	plugin_log(MOSQ_LOG_INFO, LOG_CRYPTO_INFO, char *fmt, ...)
+
+
 
 int hash_password(const char * password, const char * salt, char * hash){
 	int pwd_len = strlen(password);

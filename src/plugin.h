@@ -1,5 +1,6 @@
 #pragma once
 
-#define PLUGIN_FAILURE 1
-#define PLUGIN_SUCCESS 0
-
+enum Plugin_ErrorCodes{
+	PLUGIN_SUCCESS = 0,
+	PLUGIN_FAILURE = 1
+};
