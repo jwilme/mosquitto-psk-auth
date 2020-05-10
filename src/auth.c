@@ -23,7 +23,20 @@
 #define auth_log_info(char * fmt, ...) \
 	plugin_log(MOSQ_LOG_INFO, LOG_AUTH_INFO_PREFIX, char *fmt, ...)
 
-int db_connection(void *user_data)
+/*
+ * Function: db_connection
+ *
+ * This functions prompts for a password in the standard input, and will 
+ * attempt to connect to the DB using the given credentials.
+ *
+ * XXX : For the moment, the username is a constant, for the future, it could
+ * nice to be able to prompt for the username as well
+ *
+ * Return value:
+ * 	AUTH_SUCCESS if the connection is established to the database
+ * 	AUTH_DENIED if the connection attemp fails "RETRY_LIMITS" times
+ */
+int db_connection()
 {
 	/* Prompt for Password and Attempt to Connect to the DB */
 	for(int i = 0; i <= RETRY_LIMITS; i++){
@@ -33,14 +46,16 @@ int db_connection(void *user_data)
 			return AUTH_DENIED;
 		}
 
-		char * db_password;
-		if(prompt_password(&db_password) < 0){
+//XXX : Password is not allocated by getline, a malloc has to be done, but I 
+//	need to avoid to realloc it at every attempt
+		printf("Password : ")
+		if(prompt_password(&password) < 0){
 			auth_log_error("Unable to prompt for the password");	
-			continue
+			continue;
 		} 
 		
-		else if(mysql_connect(user_data, username, db_password)){
-			free(db_password);		
+		else if(mysql_connect(username, (const char *)password)){
+			free(password);		
 		}
 	       
 		else{
@@ -52,7 +67,7 @@ int db_connection(void *user_data)
 	return AUTH_SUCCESS;
 }
 
-int psk_init(char * psk_generated_key)
+int psk_init(char *psk_generated_key)
 {
 	/* Prompt for Password and Check that it is the correct key */
 	for(int i = 0; i <= RETRY_LIMITS; i++){
@@ -61,7 +76,9 @@ int psk_init(char * psk_generated_key)
 					"attempts reached");
 			return AUTH_DENIED;
 		}
-
+		//
+//XXX : Password is not allocated by getline, a malloc has to be done, but I 
+//	need to avoid to realloc it at every attempt
 		char * psk_password;
 		if(prompt_password(&psk_password) < 0){
 			auth_log_error("Unable to prompt for the password");	
