@@ -1,8 +1,16 @@
 #pragma once
 
-void mysql_init(void **user_data);
-void mysql_startup(void *user_data);
-void mysql_shutdown(void *user_data);
+#define LOCALHOST NULL
+#define DB_NAME "test"
+#define DB_UNIX_SOCKET "/run/mysqld/mysqld.sock"
+
+#define NO_PORT 0
+#define NO_FLAG 0
+
+
+void mysql_init(void);
+void mysql_connect(const char *username, const char *password);
+void mysql_disconnect(void);
 void mysql_cleanup(void);
 
 void mysql_stmt_bind_param(MYSQL_STMT *stmt, MYSQL_BIND *bnd, int row_count, ...);
