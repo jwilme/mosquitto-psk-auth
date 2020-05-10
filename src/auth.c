@@ -23,8 +23,7 @@
 #define auth_log_info(char * fmt, ...) \
 	plugin_log(MOSQ_LOG_INFO, LOG_AUTH_INFO_PREFIX, char *fmt, ...)
 
-int db_connection(void *user_data, const char *username, 
-		const char *table_name, const char* db_path)
+int db_connection(void *user_data)
 {
 	/* Prompt for Password and Attempt to Connect to the DB */
 	for(int i = 0; i <= RETRY_LIMITS; i++){
@@ -40,12 +39,12 @@ int db_connection(void *user_data, const char *username,
 			continue
 		} 
 		
-		else if(mysql_connect(user_data, username) == DB_SUCCESS){
-			break;
+		else if(mysql_connect(user_data, username, db_password)){
+			free(db_password);		
 		}
 	       
 		else{
-			free(db_password);	
+			break;
 		}
 	}
 
