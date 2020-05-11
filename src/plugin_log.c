@@ -6,6 +6,21 @@
 
 #include "plugin_log.h"
 
+
+/*
+ * Function: plugin_log
+ *
+ * This function prints a log using mosquitto's log function. The sole purpose
+ * of this function is to simplify the code written. 
+ *
+ * Parameters: 
+ * 	type:		The mosquitto log type
+ * 	prefix:		A string prefix that will be appended at the beginning of the 
+ * 			message
+ * 	fmt: 		A string to format, takes the same form as a string given in a
+ * 			printf call
+ *		
+ */
 void plugin_log(int type, char * prefix, char * fmt, ...)
 {	
 	int len = strlen(ftm) + 500;
