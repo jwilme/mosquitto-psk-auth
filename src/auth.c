@@ -6,26 +6,49 @@
 
 #include <mosquitto.h>
 #include <mosquitto_broker.h>
+#include <mosquitto_plugin.h>
 
-#include "mysql.h"
 #include "crypto.h"
 #include "auth.h"
+#include "plugin_log.h"
 
 #define LOG_AUTH_ERROR_PREFIX 		"[AUTH - ERROR] ::"
 #define LOG_AUTH_WARNING_PREFIX 	"[AUTH - WARNING] ::"
 #define LOG_AUTH_INFO_PREFIX 		"[AUTH - INFO] ::"
 
-#define auth_log_error(char * fmt, ...) \
-	plugin_log(MOSQ_LOG_WARNING, LOG_AUTH_ERROR_PREFIX, char *fmt, ...)
+#define auth_log_error(...) \
+	plugin_log(MOSQ_LOG_WARNING, LOG_AUTH_ERROR_PREFIX, __VA_ARGS__)
 
-#define auth_log_warning(char * fmt, ...) \
-	plugin_log(MOSQ_LOG_ERROR, LOG_AUTH_WARNING_PREFIX, char *fmt, ...)
+#define auth_log_warning(...) \
+	plugin_log(MOSQ_LOG_ERROR, LOG_AUTH_WARNING_PREFIX, __VA_ARGS__)
 
-#define auth_log_info(char * fmt, ...) \
-	plugin_log(MOSQ_LOG_INFO, LOG_AUTH_INFO_PREFIX, char *fmt, ...)
+#define auth_log_info(...) \
+	plugin_log(MOSQ_LOG_INFO, LOG_AUTH_INFO_PREFIX, __VA_ARGS__)
 
 /*
- * Function: db_connection
+ * Function: auth_init
+ *
+ * This function initializes all authentication structure according to the
+ * given mosquitto options, and the options set in the plugin config file
+ *
+ * Parameters:
+ *
+ * Return Value:
+ *
+ */
+int auth_init(struct mosquitto_opt *opts, int opt_count){
+	for(int i = 0; i < opt_count; i++){
+		//Read all the options passed to the plugin
+	}
+
+	//Open plugin.conf file
+	//For each line, extract the option and its value
+	
+	return AUTH_SUCCESS;
+}
+
+/*
+ * Function: auth_connect_db 
  *
  * This functions prompts for a password in the standard input, and will 
  * attempt to connect to the DB using the given credentials.
@@ -37,34 +60,41 @@
  * 	AUTH_SUCCESS if the connection is established to the database
  * 	AUTH_DENIED if the connection attemp fails "RETRY_LIMITS" times
  */
-int db_connection()
+int auth_connect_db()
 {
-	/* Prompt for Password and Attempt to Connect to the DB */
+	/* Prompt for Username and Password and Attempt to Connect to the DB */
+	char * un = (char *)malloc(MAX_CREDENTIAL_SIZE * sizeof(char));
+	char * pwd = (char *)malloc(MAX_CREDENTIAL_SIZE * sizeof(char));
+
 	for(int i = 0; i <= RETRY_LIMITS; i++){
 		if(i == RETRY_LIMITS){
 			auth_log_error("Max number of MySQL Authentication "
 					"attempts reached");
+			free(un);
+			free(pwd);
 			return AUTH_DENIED;
 		}
 
-//XXX : Password is not allocated by getline, a malloc has to be done, but I 
-//	need to avoid to realloc it at every attempt
-		printf("Password : ")
-		if(prompt_password(&password) < 0){
-			auth_log_error("Unable to prompt for the password");	
+		printf("DB Username : ");
+		int rc_un = getline(&un, MAX_CREDENTIAL_SIZE, stdin);
+
+		printf("DB Password : ");
+		int rc_pw = getline(&pwd, MAX_CREDENTIAL_SIZE, stdin);
+
+		if(rc_un <= 0 || rc_pw <= 0){
+			auth_log_error("Unable to prompt for the password or "
+					"for the username");	
 			continue;
 		} 
 		
-		else if(mysql_connect(username, (const char *)password)){
-			free(password);		
-		}
-	       
-		else{
+		else if(!db_connect((const char *)un, (const char *)pwd)){
 			break;
 		}
 	}
 
-	free(db_password);
+	free(un);
+	free(pwd);
+
 	return AUTH_SUCCESS;
 }
 
@@ -94,35 +124,35 @@ int db_connection()
  * 	For the moment, the master_psk_username is a constant. In the future, 
  * 	it could be nice for it be set manually e.g. through a config file
  */
-int psk_init(char *psk_generated_key)
+int psk_init(char *out_key)
 {
 	/* Prompt for Password and Check that it is the correct key */
+	char *pwd = (char *)malloc(MAX_CREDENTIAL_SIZE * sizeof(char));
+
 	for(int i = 0; i <= RETRY_LIMITS; i++){
 		if(i == RETRY_LIMITS){
 			auth_log_error("Max number of PSK Authentication "
 					"attempts reached");
+			free(pwd);
 			return AUTH_DENIED;
 		}
-		//
-//XXX : Password is not allocated by getline, a malloc has to be done, but I 
-//	need to avoid to realloc it at every attempt
-		char * psk_password;
-		if(prompt_password(&psk_password) < 0){
+	
+		printf("Password :");	
+		if(prompt_password(&pwd) < 0){
 			auth_log_error("Unable to prompt for the password");	
 			continue;
 		}
 
-		if(unpwd_client_auth(MASTER_PSK_USERNAME, psk_password)) break;
-		else free(psk_password);
+		if(unpwd_client_auth(MASTER_PSK_USERNAME, pwd)) break;
 	}
 
 	/* Generate and store the PSK Master Key */
 	char salt[SALT_LEN + 1]; 
-	fetch_salt(MASTER_PSK_USERNAME, psk_salt);
+	fetch_salt(MASTER_PSK_USERNAME, salt);
 
-	int err = compute_master_key(psk_password, salt, out_key);
+	int err = compute_master_key(pwd, salt, out_key);
 
-	free(psk_password);	
+	free(pwd);	
 
 	if(err){
 		auth_log_error("Could not generate the PSK Master Key");
@@ -180,7 +210,7 @@ int unpwd_client_auth(const char * username, const char * password)
 	else if(hash_password(password, salt_buf, hash_buf))
 		return_code = AUTH_FAILURE;
 
-	else if (pw_check(username, hash_buff, &result))
+	else if (pw_check(username, hash_buf, &result))
 		return_code = AUTH_FAILURE;
 
 	free(salt_buf);
@@ -217,7 +247,6 @@ int unpwd_client_auth(const char * username, const char * password)
  */
 int psk_client_auth(const char * identity, char * psk_key)
 {
-	int return_code = 0;
 
 	char *init_vector = (char *) malloc(sizeof(char) * IV_LEN); 
 	char *cyphered_key = (char *) malloc(sizeof(char) * KEY_LEN);
@@ -229,7 +258,7 @@ int psk_client_auth(const char * identity, char * psk_key)
 		return AUTH_FAILURE;
 	} 
 	
-	int decypher_error = decypher_key(master_key, cyphered_key, init_vector, psk_key);
+	int decypher_error = decypher_key(psk_master_key, cyphered_key, init_vector, psk_key);
 	free(cyphered_key);
 	free(init_vector);
 
@@ -256,17 +285,17 @@ int prompt_password(char ** password)
 	struct termios old, new;
 	int nread;
 
-	if(tcgetattr(stdin, &old) != 0)
+	if(tcgetattr((uint64_t)stdin, &old) != 0)
 		return -1;
 
 	new = old;
 	new.c_lflag &= ~ECHO;
-	if(tcsetattr(stdin, TCSAFLUSH, &new) != 0)
+	if(tcsetattr((uint64_t)stdin, TCSAFLUSH, &new) != 0)
 		return -1;
 
-	nread = getline(lineptr, MAX_PASSWORD_SIZE, stdin);
+	nread = getline(password, MAX_CREDENTIAL_SIZE, stdin);
 
-	(void) tcsetattr(stdin, TCSAFLUSH, &old);
+	(void) tcsetattr((uint64_t)stdin, TCSAFLUSH, &old);
 
 	return nread;
 }

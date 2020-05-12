@@ -2,8 +2,8 @@
 
 enum DB_ErrorCodes {
 	DB_SUCCESS = 0,
-	DB_FAILURE = 1
-}
+	DB_FAILURE = 1,
+};
 
 #define SALT_QUERY "SELECT salt FROM credentials WHERE username=?"
 

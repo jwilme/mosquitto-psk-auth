@@ -1,10 +1,12 @@
 #include <mysql/mysql.h>
 #include <stddef.h>
+#include <mosquitto.h>
 
 #include "plugin.h"
 #include "mosquitto_plugin.h"
 
 #include "mysql_binding.h"
+#include "plugin_log.h"
 #include "auth.h"
 #include "crypto.h"
 
@@ -12,14 +14,14 @@
 #define LOG_PLUGIN_WARNING 	"[PLUGIN - WARNING] ::"
 #define LOG_PLUGIN_INFO 	"[PLUGIN - INFO] ::"
 
-#define plugin_log_error(char * fmt, ...) \
-	plugin_log(MOSQ_LOG_WARNING, LOG_PLUGIN_ERROR, char *fmt, ...)
+#define plugin_log_error(...) \
+	plugin_log(MOSQ_LOG_WARNING, LOG_PLUGIN_ERROR, __VA_ARGS__)
 
-#define plugin_log_warning(char * fmt, ...) \
-	plugin_log(MOSQ_LOG_ERROR, LOG_PLUGIN_WARNING, char *fmt, ...)
+#define plugin_log_warning(...) \
+       	plugin_log(MOSQ_LOG_ERR, LOG_PLUGIN_WARNING, __VA_ARGS__)
 
-#define plugin_log_info(char * fmt, ...) \
-	plugin_log(MOSQ_LOG_INFO, LOG_PLUGIN_INFO, char *fmt, ...)
+#define plugin_log_info(...) \
+	plugin_log(MOSQ_LOG_INFO, LOG_PLUGIN_INFO, __VA_ARGS__) 
 
 
 /*
@@ -53,12 +55,8 @@ int mosquitto_auth_plugin_version(void){
  *	Return >0 on failure.
  */
 int mosquitto_auth_plugin_init(void **user_data, struct mosquitto_opt *opts, int opt_count){
-	/* For the moment, options have not effect */
-	void(opts);
-	void(opt_count);
-
-	int err = db_init(user_data);
-	return err == ACCESS_GRANTED ? PLUGIN_SUCCESS : PLUGIN_FAILURE;	
+	int err = auth_init(opts, opt_count);
+	return err == AUTH_SUCCESS ? PLUGIN_SUCCESS : PLUGIN_FAILURE;	
 }
 
 /*
@@ -82,7 +80,7 @@ int mosquitto_auth_plugin_init(void **user_data, struct mosquitto_opt *opts, int
  */
 int mosquitto_auth_plugin_cleanup(void *user_data, struct mosquitto_opt *opts, int opt_count){
 	db_cleanup();	
-	mosquitto_log_printf(MOSQ_LOG_INFO, "The plugin is shutting down, goodbye! \n");
+	plugin_log_info("The plugin is shutting down, goodbye! \n");
 
 	return PLUGIN_SUCCESS;
 }
@@ -102,7 +100,8 @@ int mosquitto_auth_plugin_cleanup(void *user_data, struct mosquitto_opt *opts, i
  *
  *	user_data :      The pointer provided in <mosquitto_auth_plugin_init>.
  *	opts :           Pointer to an array of struct mosquitto_opt, which
- *	                 provides the plugin options defined in the configuration file.
+ *	                 provides the plugin options defined in the 
+ *	                 configuration file.
  *	opt_count :      The number of elements in the opts array.
  *	reload :         If set to false, this is the first time the function has
  *	                 been called. If true, the broker has received a signal
@@ -112,12 +111,15 @@ int mosquitto_auth_plugin_cleanup(void *user_data, struct mosquitto_opt *opts, i
  *	Return 0 on success
  *	Return >0 on failure.
  */
-int mosquitto_auth_security_init(void *user_data, struct mosquitto_opt *opts, int opt_count, bool reload){
+int mosquitto_auth_security_init(void *user_data, struct mosquitto_opt *opts, 
+		int opt_count, bool reload)
+{
 	if(reload){
 		plugin_log_info("Reloading the DB Plugin");
 	}
-	int err = db_startup(user_data);
-	return err == ACCESS_GRANTED ? PLUGIN_SUCCESS : PLUGIN_FAILURE;
+
+	int err = db_setup();
+	return err == AUTH_SUCCESS ? PLUGIN_SUCCESS : PLUGIN_FAILURE;
 }
 
 /* 
@@ -145,10 +147,12 @@ int mosquitto_auth_security_init(void *user_data, struct mosquitto_opt *opts, in
  *	Return 0 on success
  *	Return >0 on failure.
  */
-int mosquitto_auth_security_cleanup(void *user_data, struct mosquitto_opt *opts, int opt_count, bool reload){
+int mosquitto_auth_security_cleanup(void *user_data, struct mosquitto_opt *opts,
+		int opt_count, bool reload){
+	
 	//Disconnect and reset the MySQL connection
-	int err = db_shutdown(user_data);
-	return err == ACCESS_GRANTED ? PLUGIN_SUCCESS : PLUGIN_FAILURE;
+	int err = db_shutdown();
+	return err == AUTH_SUCCESS ? PLUGIN_SUCCESS : PLUGIN_FAILURE;
 }
 
 /*
@@ -175,8 +179,9 @@ int mosquitto_auth_security_cleanup(void *user_data, struct mosquitto_opt *opts,
  *	MOSQ_ERR_UNKNOWN for an application specific error.
  *	MOSQ_ERR_PLUGIN_DEFER if your plugin does not wish to handle this check.
  */
-int mosquitto_auth_acl_check(void *user_data, int access, struct mosquitto *client, const struct mosquitto_acl_msg *msg){
-	// XXX : How to check if the client is allowed to publish / subscribe
+int mosquitto_auth_acl_check(void *user_data, int access, 
+		struct mosquitto *client, const struct mosquitto_acl_msg *msg)
+{
 	// FIXME : For the time being, allow all :
 	return MOSQ_ERR_SUCCESS;	
 }
@@ -195,13 +200,15 @@ int mosquitto_auth_acl_check(void *user_data, int access, struct mosquitto *clie
  *	MOSQ_ERR_UNKNOWN for an application specific error.
  *	MOSQ_ERR_PLUGIN_DEFER if your plugin does not wish to handle this check.
  */
-int mosquitto_auth_unpwd_check(void *user_data, struct mosquitto *client, const char *username, const char *password){
+int mosquitto_auth_unpwd_check(void *user_data, struct mosquitto *client, 
+		const char *username, const char *password)
+{
 	switch(unpwd_client_auth(username, password)){
 
-	case(ACCESS_GRANTED):
+	case(AUTH_SUCCESS):
 		return MOSQ_ERR_SUCCESS;
 
-	case(ACCESS_DENIED):
+	case(AUTH_DENIED):
 		plugin_log_warning("Authentication denied for user '%s'");
 		return MOSQ_ERR_AUTH;
 
@@ -235,17 +242,17 @@ int mosquitto_auth_unpwd_check(void *user_data, struct mosquitto *client, const 
  *	Return >0 on failure.
  *	Return MOSQ_ERR_PLUGIN_DEFER if your plugin does not wish to handle this check.
  */
-int mosquitto_auth_psk_key_get(void *user_data, struct mosquitto *client, const char *hint, const char *identity, char *key, int max_key_len){
-	switch(psk_client_auth(identity, key)){
-	case(ACCESS_GRANTED):
-		return 0;
+int mosquitto_auth_psk_key_get(void *user_data, struct mosquitto *client, 
+		const char *hint, const char *identity, char *key, 
+		int max_key_len)
+{
+	int err = psk_client_auth(identity, key);
 
-	case(ACCESS_DENIED):
+	if(err == AUTH_SUCCESS)
+		return PLUGIN_SUCCESS; 
+
+	else if(err == AUTH_DENIED)
 		plugin_log_info("Identity '%s' not found in the DB");
-		return 1;
 
-	default:
-		return 2; 
-	
-	}
+	return PLUGIN_FAILURE;	
 }

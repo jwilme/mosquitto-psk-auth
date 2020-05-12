@@ -1,5 +1,7 @@
 #include <string.h>
 #include <stdarg.h>
+#include <stdlib.h>
+#include <stdio.h>
 
 #include "mosquitto.h"
 #include "mosquitto_broker.h"
@@ -23,7 +25,7 @@
  */
 void plugin_log(int type, char * prefix, char * fmt, ...)
 {	
-	int len = strlen(ftm) + 500;
+	int len = strlen(fmt) + 500;
 	char * msg; 
 	va_list va;
 
@@ -36,6 +38,5 @@ void plugin_log(int type, char * prefix, char * fmt, ...)
 	msg[len-1] = '\0';
 
 	mosquitto_log_printf(type, "%s %s\n", prefix, msg);
-
 	free(msg);
 }
