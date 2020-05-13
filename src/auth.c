@@ -25,6 +25,44 @@
 #define auth_log_info(...) \
 	plugin_log(MOSQ_LOG_INFO, LOG_AUTH_INFO_PREFIX, __VA_ARGS__)
 
+struct DB_instance db_i;
+
+/*
+ * Function: prompt_password
+ *
+ * This function function prompts for a password on the standard input, after
+ * it has disabled the echo of the stdin. After a line is fetched and stored, it
+ * re-enables the echo on the stdin.
+ *
+ * Parameters:
+ * 	password:	An allocated buffer where the line fetched from the
+ * 			standard input will be stored
+ *
+ * Returns:
+ * 	-1 if a line could not be fetched or the echo could be turned off
+ * 	Otherwise, it returns the number of characters fetched 
+ */
+int _prompt_password(char ** password)
+{	
+	struct termios old, new;
+	int nread;
+	long unsigned int buffsize = MAX_CREDENTIAL_SIZE;
+
+	if(tcgetattr((uint64_t)stdin, &old) != 0)
+		return -1;
+
+	new = old;
+	new.c_lflag &= ~ECHO;
+	if(tcsetattr((uint64_t)stdin, TCSAFLUSH, &new) != 0)
+		return -1;
+
+	nread = getline(password, &buffsize, stdin);
+
+	(void) tcsetattr((uint64_t)stdin, TCSAFLUSH, &old);
+
+	return nread;
+}
+
 /*
  * Function: auth_init
  *
@@ -37,6 +75,9 @@
  *
  */
 int auth_init(struct mosquitto_opt *opts, int opt_count){
+	memset(&db_i, 0, sizeof(db_i));
+	memset(&cry_i, 0, sizeof(cry_i));
+
 	for(int i = 0; i < opt_count; i++){
 		//Read all the options passed to the plugin
 	}
@@ -76,18 +117,19 @@ int auth_connect_db()
 		}
 
 		printf("DB Username : ");
-		int rc_un = getline(&un, MAX_CREDENTIAL_SIZE, stdin);
+		long unsigned int un_len = MAX_CREDENTIAL_SIZE;
+		int rc_un = getline(&un, &un_len, stdin);
 
 		printf("DB Password : ");
-		int rc_pw = getline(&pwd, MAX_CREDENTIAL_SIZE, stdin);
-
+		int rc_pw = _prompt_password(&pwd); 
+			
 		if(rc_un <= 0 || rc_pw <= 0){
 			auth_log_error("Unable to prompt for the password or "
 					"for the username");	
 			continue;
 		} 
 		
-		else if(!db_connect((const char *)un, (const char *)pwd)){
+		else if(!db_i.connect((const char *)un, (const char *)pwd)){
 			break;
 		}
 	}
@@ -95,11 +137,13 @@ int auth_connect_db()
 	free(un);
 	free(pwd);
 
+	db_i.prepare_statements();
+
 	return AUTH_SUCCESS;
 }
 
 /*
- * Function: psk_init
+ * Function: auth_master_psk 
  *
  * This function will generate the psk_master_key used to decypher the
  * PSK stored in the DB. It does it in three steps :
@@ -124,7 +168,7 @@ int auth_connect_db()
  * 	For the moment, the master_psk_username is a constant. In the future, 
  * 	it could be nice for it be set manually e.g. through a config file
  */
-int psk_init(char *out_key)
+int auth_master_psk(char *out_key)
 {
 	/* Prompt for Password and Check that it is the correct key */
 	char *pwd = (char *)malloc(MAX_CREDENTIAL_SIZE * sizeof(char));
@@ -138,7 +182,7 @@ int psk_init(char *out_key)
 		}
 	
 		printf("Password :");	
-		if(prompt_password(&pwd) < 0){
+		if(_prompt_password(&pwd) < 0){
 			auth_log_error("Unable to prompt for the password");	
 			continue;
 		}
@@ -148,7 +192,7 @@ int psk_init(char *out_key)
 
 	/* Generate and store the PSK Master Key */
 	char salt[SALT_LEN + 1]; 
-	fetch_salt(MASTER_PSK_USERNAME, salt);
+	db_i.get_salt(MASTER_PSK_USERNAME, salt);
 
 	int err = compute_master_key(pwd, salt, out_key);
 
@@ -164,7 +208,7 @@ int psk_init(char *out_key)
 }
 
 /*
- * Function: unpwd_client_auth
+ * Function: auth_client 
  *
  * This function checks in that the client that attempts 
  * to connect to the broker is giving valid credentials.
@@ -196,7 +240,7 @@ int psk_init(char *out_key)
  * 	in this case, the function should return AUTH_DENIED and not 
  * 	AUTH_FAILURE
  */
-int unpwd_client_auth(const char * username, const char * password)
+int auth_client(const char * username, const char * password)
 {
 	int return_code = 0;
 	long long int result;
@@ -204,13 +248,13 @@ int unpwd_client_auth(const char * username, const char * password)
 	char *salt_buf = (char *)malloc(sizeof(char) * (SALT_LEN+1));
 	char *hash_buf = (char *)malloc(sizeof(char) * (HASH_LEN+1));
 
-	if(fetch_salt(username, salt_buf))
+	if(db_i.get_salt(username, salt_buf))
 		return_code = AUTH_FAILURE;
 	
 	else if(hash_password(password, salt_buf, hash_buf))
 		return_code = AUTH_FAILURE;
 
-	else if (pw_check(username, hash_buf, &result))
+	else if (db_i.pw_check(username, hash_buf, &result))
 		return_code = AUTH_FAILURE;
 
 	free(salt_buf);
@@ -223,7 +267,7 @@ int unpwd_client_auth(const char * username, const char * password)
 }
 
 /*
- * Function: psk_client_auth
+ * Function: auth_psk_getter 
  *
  * This function retrieves the Pre-Shared-Key stored in the DB and associated 
  * to the identiy provided by the client.
@@ -245,13 +289,13 @@ int unpwd_client_auth(const char * username, const char * password)
  *	At the moment, if the identity does not exists in the DB, the function
  *	returns AUTH_FAILURE, when it should return AUTH_DENIED.
  */
-int psk_client_auth(const char * identity, char * psk_key)
+int auth_psk_getter(const char * identity, char * psk_key)
 {
 
 	char *init_vector = (char *) malloc(sizeof(char) * IV_LEN); 
 	char *cyphered_key = (char *) malloc(sizeof(char) * KEY_LEN);
 	
-	if(fetch_psk_key(identity, init_vector, cyphered_key)){ 
+	if(db_i.fetch_psk_key(identity, init_vector, cyphered_key)){ 
 		free(cyphered_key);
 		free(init_vector);
 
@@ -263,39 +307,4 @@ int psk_client_auth(const char * identity, char * psk_key)
 	free(init_vector);
 
 	return decypher_error ? AUTH_FAILURE: AUTH_SUCCESS;	
-}
-
-/*
- * Function: prompt_password
- *
- * This function function prompts for a password on the standard input, after
- * it has disabled the echo of the stdin. After a line is fetched and stored, it
- * re-enables the echo on the stdin.
- *
- * Parameters:
- * 	password:	An allocated buffer where the line fetched from the
- * 			standard input will be stored
- *
- * Returns:
- * 	-1 if a line could not be fetched or the echo could be turned off
- * 	Otherwise, it returns the number of characters fetched 
- */
-int prompt_password(char ** password)
-{	
-	struct termios old, new;
-	int nread;
-
-	if(tcgetattr((uint64_t)stdin, &old) != 0)
-		return -1;
-
-	new = old;
-	new.c_lflag &= ~ECHO;
-	if(tcsetattr((uint64_t)stdin, TCSAFLUSH, &new) != 0)
-		return -1;
-
-	nread = getline(password, MAX_CREDENTIAL_SIZE, stdin);
-
-	(void) tcsetattr((uint64_t)stdin, TCSAFLUSH, &old);
-
-	return nread;
 }
