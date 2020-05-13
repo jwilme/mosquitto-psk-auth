@@ -76,7 +76,6 @@ int _prompt_password(char ** password)
  */
 int auth_init(struct mosquitto_opt *opts, int opt_count){
 	memset(&db_i, 0, sizeof(db_i));
-	memset(&cry_i, 0, sizeof(cry_i));
 
 	for(int i = 0; i < opt_count; i++){
 		//Read all the options passed to the plugin
