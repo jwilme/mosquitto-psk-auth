@@ -17,14 +17,14 @@
 #define LOG_CRYPTO_WARNING 	"[CRYPTO - WARNING] ::"
 #define LOG_CRYPTO_INFO 	"[CRYPTO - INFO] ::"
 
-#define crypto_log_error(char * fmt, ...) \
-	plugin_log(MOSQ_LOG_WARNING, LOG_CRYPTO_ERROR, char *fmt, ...)
+#define crypto_log_error(...) \
+	plugin_log(MOSQ_LOG_WARNING, LOG_CRYPTO_ERROR, __VA_ARGS__)
 
-#define crypto_log_warning(char * fmt, ...) \
-	plugin_log(MOSQ_LOG_ERROR, LOG_CRYPTO_WARNING, char *fmt, ...)
+#define crypto_log_warning(...) \
+	plugin_log(MOSQ_LOG_ERROR, LOG_CRYPTO_WARNING, __VA_ARGS__)
 
-#define crypto_log_info(char * fmt, ...) \
-	plugin_log(MOSQ_LOG_INFO, LOG_CRYPTO_INFO, char *fmt, ...)
+#define crypto_log_info(...) \
+	plugin_log(MOSQ_LOG_INFO, LOG_CRYPTO_INFO, __VA_ARGS__) 
 
 
 
@@ -42,7 +42,7 @@ int hash_password(const char * password, const char * salt, char * hash){
 
 int compute_master_key(const char * password, char * out){
 	int pwd_len = strlen(password);
-	strcopy(out, SHA256(password, pwd_len, NULL)); 
+	strcpy(out, SHA256(password, pwd_len, NULL)); 
 
 	return CRYPTO_OK;
 }

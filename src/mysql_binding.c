@@ -140,7 +140,8 @@ void mysql_close_statements()
 }
 
 
-int mysql_pw_check(const char *username, const char *hash_buff, int *p_result)
+int mysql_pw_check(const char *username, const char *hash_buff, 
+		long long int *p_result)
 {
 	MYSQL_BIND auth_query_bind[1];
 	MYSQL_BIND auth_result_bind[1];

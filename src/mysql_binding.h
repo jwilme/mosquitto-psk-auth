@@ -200,7 +200,8 @@ void mysql_close_statements(void);
  *	DB_FAILURE if an error occured
  *
  */
-int mysql_pw_check(const char *username, const char *hash_buff, int *p_result);
+int mysql_pw_check(const char *username, const char *hash_buff, 
+		long long int *p_result);
 
 /*
  * Function: mysql_get_salt
