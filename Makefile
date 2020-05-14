@@ -4,12 +4,12 @@ CC = gcc
 TARGET_ARCH = 
 
 CFLAGS = 
-CPPFLAGS = -fPIC -shared
-OUTPUT_OPTION = -o $@ 
+CPPFLAGS = -fPIC -shared 
+OUTPUT_OPTION = -Wall -Werror -Wextra -o $@ 
 
-LDFLAGS =
-LDLIBS = 
-LOADLIBES =
+LDFLAGS = -fPIC -shared 
+LDLIBS = -lmosquitto -lcrypto -lmariadb -largon2 
+LOADLIBES =  
 
 SRCDIR = src/
 BUILDDIR = build/
@@ -18,19 +18,29 @@ VPATH = $(SRCDIR):$(BUILDDIR)
 
 SRC = $(wildcard $(SRCDIR)*.c)
 BUILD = $(patsubst $(SRCDIR)%, $(BUILDDIR)%, $(patsubst %.c, %.o, $(SRC)))
-OUTLIB = auth_plugin.so
+OUTLIB = plugin.so
 
-.PHONY: all clean
+.PHONY: all clean help
+
+help:
+	@ echo ""
+	@ echo "The help section is not ready yet. Come back later! :)" 
+	@ echo "Not to myself : Need to create the makefile help section"
+	@ echo ""
 
 all: $(OUTLIB)
 
-$(OUTLIB) : $(BUILD)
-	$(Q) $(LINK.o) $^ $(LOADLIBES) $(LDLIBS) -o $@
+#$(TEST): $(BUILD) $(TEST_BUILD)
+#	@ echo "LD	$@"
+#	$(Q)
+
+$(OUTLIB): $(BUILD)
 	@ echo "AR	$@"
+	$(Q) $(LINK.o) $^ -o $@ $(LOADLIBES) $(LDLIBS) 
 
 $(BUILDDIR)%.o: %.c
-	$(Q) $(COMPILE.c) $(OUTPUT_OPTION) $< 
 	@ echo "CC	$(patsubst $(BUILDDIR)%,%,$@)"
+	$(Q) $(COMPILE.c) $(OUTPUT_OPTION) $< 
 	
 clean:
 	rm -f $(OUTLIB) $(BUILDDIR)*.o
