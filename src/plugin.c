@@ -1,28 +1,29 @@
 #include <mysql/mysql.h>
+#include <stdlib.h>
 #include <stddef.h>
 #include <mosquitto.h>
 
-#include "plugin.h"
 #include "mosquitto_plugin.h"
 
+#include "db_common.h"
 #include "mysql_binding.h"
 #include "plugin_log.h"
 #include "auth.h"
 #include "crypto.h"
+#include "plugin.h"
 
 #define LOG_PLUGIN_ERROR 	"[PLUGIN - ERROR] ::"
 #define LOG_PLUGIN_WARNING 	"[PLUGIN - WARNING] ::"
 #define LOG_PLUGIN_INFO 	"[PLUGIN - INFO] ::"
 
 #define plugin_log_error(...) \
-	plugin_log(MOSQ_LOG_WARNING, LOG_PLUGIN_ERROR, __VA_ARGS__)
+	plugin_log(LOG_PLUGIN_ERROR, __VA_ARGS__)
 
 #define plugin_log_warning(...) \
-       	plugin_log(MOSQ_LOG_ERR, LOG_PLUGIN_WARNING, __VA_ARGS__)
+       	plugin_log(LOG_PLUGIN_WARNING, __VA_ARGS__)
 
 #define plugin_log_info(...) \
-	plugin_log(MOSQ_LOG_INFO, LOG_PLUGIN_INFO, __VA_ARGS__) 
-
+	plugin_log(LOG_PLUGIN_INFO, __VA_ARGS__) 
 
 /*
  * Function: mosquitto_auth_plugin_version
@@ -54,9 +55,20 @@ int mosquitto_auth_plugin_version(void){
  *	Return 0 on success
  *	Return >0 on failure.
  */
-int mosquitto_auth_plugin_init(void **user_data, struct mosquitto_opt *opts, int opt_count){
-	int err = auth_init(opts, opt_count);
-	return err == AUTH_SUCCESS ? PLUGIN_SUCCESS : PLUGIN_FAILURE;	
+int mosquitto_auth_plugin_init(void **p_user_data, struct mosquitto_opt *opts, int opt_count){
+
+	*p_user_data = (void *)malloc(sizeof(struct DB_instance));
+
+	(void)(opts);
+	(void)(opt_count);
+
+	if(!(*p_user_data)){
+		plugin_log_error("Could not allocate memory for the" 
+				 "DB_instance");
+		return PLUGIN_FAILURE;
+	}
+
+	return PLUGIN_SUCCESS;
 }
 
 /*
@@ -79,9 +91,13 @@ int mosquitto_auth_plugin_init(void **user_data, struct mosquitto_opt *opts, int
  *	Return >0 on failure.
  */
 int mosquitto_auth_plugin_cleanup(void *user_data, struct mosquitto_opt *opts, int opt_count){
-	db_cleanup();	
-	plugin_log_info("The plugin is shutting down, goodbye! \n");
+	(void)(opts);
+	(void)(opt_count);	
 
+	auth_cleanup();
+	free(user_data);
+
+	plugin_log_info("The plugin is shutting down, goodbye! \n");
 	return PLUGIN_SUCCESS;
 }
 
@@ -114,12 +130,27 @@ int mosquitto_auth_plugin_cleanup(void *user_data, struct mosquitto_opt *opts, i
 int mosquitto_auth_security_init(void *user_data, struct mosquitto_opt *opts, 
 		int opt_count, bool reload)
 {
+	(void)(opts);
+	
 	if(reload){
 		plugin_log_info("Reloading the DB Plugin");
 	}
 
-	int err = db_setup();
-	return err == AUTH_SUCCESS ? PLUGIN_SUCCESS : PLUGIN_FAILURE;
+	if(opt_count == 0){
+		plugin_log_error("No option specified for the plugin");
+		return PLUGIN_FAILURE;
+	}
+
+	for(int i = 0; i < opt_count; i++){
+		;	
+	}
+
+
+	auth_init(DB_I);
+	auth_connect_db();
+	auth_master_psk();
+
+	return PLUGIN_SUCCESS;
 }
 
 /* 
@@ -149,10 +180,14 @@ int mosquitto_auth_security_init(void *user_data, struct mosquitto_opt *opts,
  */
 int mosquitto_auth_security_cleanup(void *user_data, struct mosquitto_opt *opts,
 		int opt_count, bool reload){
-	
-	//Disconnect and reset the MySQL connection
-	int err = db_shutdown();
-	return err == AUTH_SUCCESS ? PLUGIN_SUCCESS : PLUGIN_FAILURE;
+
+	(void)(user_data);
+	(void)(opts);
+	(void)(opt_count);	
+	(void)(reload);
+
+	auth_disconnect();
+	return PLUGIN_SUCCESS;
 }
 
 /*
@@ -182,7 +217,12 @@ int mosquitto_auth_security_cleanup(void *user_data, struct mosquitto_opt *opts,
 int mosquitto_auth_acl_check(void *user_data, int access, 
 		struct mosquitto *client, const struct mosquitto_acl_msg *msg)
 {
-	// FIXME : For the time being, allow all :
+	// XXX : For the time being, allow all :
+	(void)(user_data);
+	(void)(access);
+	(void)(client);
+	(void)(msg);
+
 	return MOSQ_ERR_SUCCESS;	
 }
 
@@ -203,7 +243,13 @@ int mosquitto_auth_acl_check(void *user_data, int access,
 int mosquitto_auth_unpwd_check(void *user_data, struct mosquitto *client, 
 		const char *username, const char *password)
 {
-	switch(unpwd_client_auth(username, password)){
+	
+	(void)(user_data);
+	(void)(client);
+	(void)(username);
+	(void)(password);
+
+	switch(auth_client(username, password)){
 
 	case(AUTH_SUCCESS):
 		return MOSQ_ERR_SUCCESS;
@@ -246,7 +292,12 @@ int mosquitto_auth_psk_key_get(void *user_data, struct mosquitto *client,
 		const char *hint, const char *identity, char *key, 
 		int max_key_len)
 {
-	int err = psk_client_auth(identity, key);
+	(void)(user_data);
+	(void)(client);
+	(void)(hint);
+	(void)(max_key_len);
+
+	int err = auth_get_psk(identity, key);
 
 	if(err == AUTH_SUCCESS)
 		return PLUGIN_SUCCESS; 

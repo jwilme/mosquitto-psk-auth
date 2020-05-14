@@ -6,25 +6,27 @@
 
 #include <mosquitto.h>
 #include <mosquitto_broker.h>
+#include <mosquitto_plugin.h>
 
-#include "auth.h"
-#include "plugin_log.h"
 #include "db_common.h"
 #include "crypto.h"
 #include "mysql_binding.h"
+#include "plugin_log.h"
 
 #define LOG_MYSQL_ERROR 	"[MYSQL - ERROR] ::"
 #define LOG_MYSQL_WARNING 	"[MYSQL - WARNING] ::"
 #define LOG_MYSQL_INFO 		"[MYSQL - INFO] ::"
 
-#define mysql_log_error(char *fmt, ...) \
-	plugin_log(MOSQ_LOG_WARNING, LOG_MYSQL_ERROR, char *fmt, ...)
 
-#define mysql_log_warning(char *fmt, ...) \
-	plugin_log(MOSQ_LOG_ERROR, LOG_MYSQL_WARNING, char *fmt, ...)
+#define mysql_log_error(...) \
+	plugin_log(LOG_MYSQL_ERROR, __VA_ARGS__)
 
-#define mysql_log_info(char *fmt, ...) \
-	plugin_log(MOSQ_LOG_INFO, LOG_MYSQL_INFO, char *fmt, ...)
+#define mysql_log_warning(...) \
+	plugin_log(LOG_MYSQL_WARNING, __VA_ARGS__)
+
+#define mysql_log_info(...) \
+	plugin_log(LOG_MYSQL_INFO, __VA_ARGS__)
+
 
 MYSQL * mysql_handler;
 
@@ -46,9 +48,9 @@ int mysql_db_init()
 
 int mysql_connect(const char *username, const char *password)
 {
-	int err = mysql_real_connect(mysql_handler, LOCALHOST, username, 
+	MYSQL * handler = mysql_real_connect(mysql_handler, LOCALHOST, username, 
 			password, DB_NAME, NO_PORT, DB_UNIX_SOCKET, NO_FLAG);
-	if(err){
+	if(!handler){
 		mysql_log_error("DB returned an error on connection : %s",
 			       mysql_errno(mysql_handler));	
 		return DB_FAILURE;
@@ -71,7 +73,8 @@ void mysql_cleanup()
 	mysql_library_end();
 }
 
-void _mysql_stmt_bind_param(MYSQL_STMT *stmt, MYSQL_BIND *bnd, int row_count, ...)
+void _mysql_stmt_bind_param(MYSQL_STMT *stmt, MYSQL_BIND *bnd, int row_count, 
+		...)
 {
 	memset(bnd, 0, sizeof(MYSQL_BIND)*row_count);
 
@@ -88,7 +91,8 @@ void _mysql_stmt_bind_param(MYSQL_STMT *stmt, MYSQL_BIND *bnd, int row_count, ..
 	mysql_stmt_bind_param(stmt, bnd); 
 }
 
-void _mysql_stmt_bind_result(MYSQL_STMT *stmt, MYSQL_BIND *bnd, int row_count, ...)
+void _mysql_stmt_bind_result(MYSQL_STMT *stmt, MYSQL_BIND *bnd, int row_count, 
+		...)
 {
 	memset(bnd, 0, sizeof(MYSQL_BIND)*row_count);
 
@@ -149,7 +153,7 @@ int mysql_pw_check(const char *username, const char *hash_buff,
 	my_bool auth_is_null;
 
 	_mysql_stmt_bind_param(stmt_auth, auth_query_bind, 1,
-		MYSQL_TYPE_BINARY, hash_buff, HASH_LEN+1);
+		MYSQL_TYPE_BLOB, hash_buff, HASH_LEN+1);
 
 	_mysql_stmt_bind_result(stmt_auth, auth_result_bind, 1,
 		MYSQL_TYPE_LONGLONG, p_result, NULL, NULL, &auth_is_null); 
@@ -167,13 +171,13 @@ int mysql_pw_check(const char *username, const char *hash_buff,
 		return DB_FAILURE;
 
 	case(1):
-		mysql_log_error("(Username : %s) Result Fetch Error : %s \n", 
+		mysql_log_error("(Username : %s) Result Fetch Error : %s", 
 				username, 
 				mysql_stmt_errno(stmt_auth));
-
-	default:
 		return DB_FAILURE; 
 
+	default:
+		return DB_FAILURE;
 	}
 }
 
@@ -186,7 +190,7 @@ int mysql_get_salt(const char *username, char *salt_buf)
 			MYSQL_TYPE_STRING, username, strlen(username)); 
 
 	_mysql_stmt_bind_result(stmt_salt, salt_result_bind, 1, 
-		MYSQL_TYPE_BINARY, salt_buf, SALT_LEN, salt_len, NULL, NULL);
+		MYSQL_TYPE_BLOB, salt_buf, SALT_LEN, &salt_len, NULL, NULL);
 
 	mysql_stmt_execute(stmt_salt);	
 	int err = mysql_stmt_fetch(stmt_salt);
@@ -232,8 +236,8 @@ int mysql_fetch_psk_key(const char * identity, char * iv, char * key)
 		MYSQL_TYPE_STRING, identity, strlen(identity));
 
 	_mysql_stmt_bind_result(stmt_psk, psk_result_bind, 2,
-		MYSQL_TYPE_BINARY, iv, IV_LEN, length, error, NULL,
-		MYSQL_TYPE_BINARY, key, KEY_LEN, length+1, error+1, NULL
+		MYSQL_TYPE_BLOB, iv, IV_LEN, length, error, NULL,
+		MYSQL_TYPE_BLOB, key, KEY_LEN, length+1, error+1, NULL
 		);
 
 	mysql_stmt_execute(stmt_psk);	

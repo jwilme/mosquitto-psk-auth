@@ -8,6 +8,7 @@
 #include <mosquitto_broker.h>
 #include <mosquitto_plugin.h>
 
+#include "db_common.h"
 #include "crypto.h"
 #include "auth.h"
 #include "plugin_log.h"
@@ -17,16 +18,16 @@
 #define LOG_AUTH_INFO_PREFIX 		"[AUTH - INFO] ::"
 
 #define auth_log_error(...) \
-	plugin_log(MOSQ_LOG_WARNING, LOG_AUTH_ERROR_PREFIX, __VA_ARGS__)
+	plugin_log(LOG_AUTH_ERROR_PREFIX, __VA_ARGS__)
 
 #define auth_log_warning(...) \
-	plugin_log(MOSQ_LOG_ERROR, LOG_AUTH_WARNING_PREFIX, __VA_ARGS__)
+	plugin_log(LOG_AUTH_WARNING_PREFIX, __VA_ARGS__)
 
 #define auth_log_info(...) \
-	plugin_log(MOSQ_LOG_INFO, LOG_AUTH_INFO_PREFIX, __VA_ARGS__)
+	plugin_log(LOG_AUTH_INFO_PREFIX, __VA_ARGS__)
 
 
-struct DB_instance db_i;
+struct DB_instance * db_i;
 char * psk_master_key;
 
 /*
@@ -65,16 +66,17 @@ int _prompt_password(char ** password)
 	return nread;
 }
 
-int auth_init(struct mosquitto_opt *opts, int opt_count){
-	memset(&db_i, 0, sizeof(db_i));
-	(void)(opts);
-	for(int i = 0; i < opt_count; i++){
-		;//Read all the options passed to the plugin
+int auth_init(struct DB_instance *db_inst){
+	db_i = db_inst;	
+	db_i->init();
+
+	psk_master_key = (char *)malloc(sizeof(char *) * KEY_LEN);	
+	if(!psk_master_key){
+		auth_log_error("Could not allocate memory for the"
+				"psk_master_key");
+		return AUTH_FAILURE;
 	}
 
-	//Open plugin.conf file
-	//For each line, extract the option and its value
-	
 	return AUTH_SUCCESS;
 }
 
@@ -106,20 +108,21 @@ int auth_connect_db()
 			continue;
 		} 
 		
-		else if(!db_i.connect((const char *)un, (const char *)pwd)){
+		else if(!db_i->connect((const char *)un, (const char *)pwd)){
 			break;
 		}
+
+		auth_log_error("Bad username and/or password");
 	}
 
 	free(un);
 	free(pwd);
 
-	db_i.prepare_statements();
-
+	db_i->prepare_statements();
 	return AUTH_SUCCESS;
 }
 
-int auth_master_psk(char *out_key)
+int auth_master_psk()
 {
 	/* Prompt for Password and Check that it is the correct key */
 	char *pwd = (char *)malloc(MAX_CREDENTIAL_SIZE * sizeof(char));
@@ -143,9 +146,9 @@ int auth_master_psk(char *out_key)
 
 	/* Generate and store the PSK Master Key */
 	char salt[SALT_LEN + 1]; 
-	db_i.get_salt(MASTER_PSK_USERNAME, salt);
+	db_i->get_salt(MASTER_PSK_USERNAME, salt);
 
-	int err = compute_master_key(pwd, salt, out_key);
+	int err = compute_master_key(pwd, salt, psk_master_key);
 
 	free(pwd);	
 
@@ -166,13 +169,13 @@ int auth_client(const char * username, const char * password)
 	char *salt_buf = (char *)malloc(sizeof(char) * (SALT_LEN+1));
 	char *hash_buf = (char *)malloc(sizeof(char) * (HASH_LEN+1));
 
-	if(db_i.get_salt(username, salt_buf))
+	if(db_i->get_salt(username, salt_buf))
 		return_code = AUTH_FAILURE;
 	
 	else if(hash_password(password, salt_buf, hash_buf))
 		return_code = AUTH_FAILURE;
 
-	else if (db_i.pw_check(username, hash_buf, &result))
+	else if (db_i->pw_check(username, hash_buf, &result))
 		return_code = AUTH_FAILURE;
 
 	free(salt_buf);
@@ -190,7 +193,7 @@ int auth_get_psk(const char * identity, char * psk_key)
 	char *init_vector = (char *) malloc(sizeof(char) * IV_LEN); 
 	char *cyphered_key = (char *) malloc(sizeof(char) * KEY_LEN);
 	
-	if(db_i.fetch_psk_key(identity, init_vector, cyphered_key)){ 
+	if(db_i->fetch_psk_key(identity, init_vector, cyphered_key)){ 
 		free(cyphered_key);
 		free(init_vector);
 
@@ -202,4 +205,17 @@ int auth_get_psk(const char * identity, char * psk_key)
 	free(init_vector);
 
 	return decypher_error ? AUTH_FAILURE: AUTH_SUCCESS;	
+}
+
+int auth_disconnect(){
+	db_i->close_statements();
+	db_i->disconnect();
+
+	free(psk_master_key);	
+	return AUTH_SUCCESS;
+}
+
+int auth_cleanup(){
+	db_i->cleanup();
+	return AUTH_SUCCESS;
 }

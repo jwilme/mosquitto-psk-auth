@@ -23,7 +23,7 @@
  * 			printf call
  *		
  */
-void plugin_log(int type, char * prefix, char * fmt, ...)
+void plugin_log(char * prefix, char * fmt, ...)
 {	
 	int len = strlen(fmt) + 500;
 	char * msg; 
@@ -37,6 +37,6 @@ void plugin_log(int type, char * prefix, char * fmt, ...)
 
 	msg[len-1] = '\0';
 
-	mosquitto_log_printf(type, "%s %s\n", prefix, msg);
+	printf("%s %s\n", prefix, msg);
 	free(msg);
 }

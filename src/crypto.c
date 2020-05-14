@@ -19,13 +19,13 @@
 #define LOG_CRYPTO_INFO 	"[CRYPTO - INFO] ::"
 
 #define crypto_log_error(...) \
-	plugin_log(MOSQ_LOG_WARNING, LOG_CRYPTO_ERROR, __VA_ARGS__)
+	plugin_log(LOG_CRYPTO_ERROR, __VA_ARGS__)
 
 #define crypto_log_warning(...) \
-	plugin_log(MOSQ_LOG_ERROR, LOG_CRYPTO_WARNING, __VA_ARGS__)
+	plugin_log(LOG_CRYPTO_WARNING, __VA_ARGS__)
 
 #define crypto_log_info(...) \
-	plugin_log(MOSQ_LOG_INFO, LOG_CRYPTO_INFO, __VA_ARGS__) 
+	plugin_log(LOG_CRYPTO_INFO, __VA_ARGS__) 
 
 
 /*

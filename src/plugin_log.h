@@ -1,3 +1,3 @@
 #pragma once
 
-void plugin_log(int type, char * prefix, char * fmt, ...);
+void plugin_log(char * prefix, char * fmt, ...);

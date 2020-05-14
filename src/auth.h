@@ -10,28 +10,6 @@ enum Auth_ErrorCodes {
 #define MAX_CREDENTIAL_SIZE 40
 #define RETRY_LIMITS 3
 
-typedef int 	(*DB_init)(void);
-typedef int 	(*DB_connect)(const char *, const char *);
-typedef void 	(*DB_disconnect)(void);
-typedef void 	(*DB_cleanup)(void);
-typedef void 	(*DB_prepare_statements)(void);
-typedef void 	(*DB_close_statements)(void);
-typedef int 	(*DB_pw_check)(const char *, const char *, long long int *);
-typedef int 	(*DB_get_salt)(const char *, char *); 
-typedef int 	(*DB_fetch_psk_key)(const char *, char *, char *);
-
-struct DB_instance{
-	DB_init init;
-	DB_connect connect;
-	DB_disconnect disconnect;
-	DB_cleanup cleanup;
-	DB_prepare_statements prepare_statements; 
-	DB_close_statements close_statements;
-	DB_pw_check pw_check; 
-	DB_get_salt get_salt; 
-	DB_fetch_psk_key fetch_psk_key;
-};
-
 /*
  * Function: auth_init
  *
@@ -43,7 +21,7 @@ struct DB_instance{
  * Return Value:
  *
  */
-int auth_init(struct mosquitto_opt * opts, int opt_count);
+int auth_init(struct DB_instance *db_inst);
 
 /*
  * Function: auth_connect_db 
@@ -86,7 +64,7 @@ int auth_connect_db(void);
  * 	For the moment, the master_psk_username is a constant. In the future, 
  * 	it could be nice for it be set manually e.g. through a config file
  */
-int auth_master_psk(char *psk_generated_key);
+int auth_master_psk(void);
 
 /*
  * Function: auth_client 
@@ -146,3 +124,19 @@ int auth_client(const char *username, const char *password);
  *	returns AUTH_FAILURE, when it should return AUTH_DENIED.
  */
 int auth_get_psk(const char *identity, char *psk_key);
+
+/*
+ * Function: auth_disconnect
+ *
+ * Return value:
+ *
+ */
+int auth_disconnect(void);
+
+/*
+ * Function: auth_cleanup
+ *
+ * Return value:
+ *
+ */
+int auth_cleanup(void);
