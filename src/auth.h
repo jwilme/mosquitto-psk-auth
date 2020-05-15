@@ -127,8 +127,13 @@ int auth_get_psk(const char *identity, char *psk_key);
 
 /*
  * Function: auth_disconnect
+ * 
+ * This function disconnects the Database, and frees all the structures
+ * that were initialized from the auth source file when the plugin started 
+ * up
  *
  * Return value:
+ *	AUTH_SUCCESS all the time
  *
  */
 int auth_disconnect(void);
@@ -136,7 +141,10 @@ int auth_disconnect(void);
 /*
  * Function: auth_cleanup
  *
- * Return value:
+ * This function performs the cleanup of the DB structure when the plugin is 
+ * about to be ended
  *
+ * Return value:
+ *	AUTH_SUCCESS all the time
  */
 int auth_cleanup(void);

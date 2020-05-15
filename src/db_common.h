@@ -5,6 +5,7 @@ enum DB_ErrorCodes {
 	DB_FAILURE = 1,
 };
 
+
 typedef int 	(*DB_init)(void);
 typedef int 	(*DB_connect)(const char *, const char *);
 typedef void 	(*DB_disconnect)(void);
