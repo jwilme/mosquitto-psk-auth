@@ -30,13 +30,14 @@
 
 int hash_password(const char * password, const char * salt, char * hash){
 	int pwd_len = strlen(password);
-	int salt_len = strlen(salt);
+	int salt_len = strlen(salt); 
 
 	if(argon2i_hash_raw(T_COST, M_COST, PARA_COST, password, pwd_len, salt, 
-			salt_len, hash, HASH_LEN)){
+			salt_len, hash, HASH_LEN) == ARGON2_OK){
 		return CRYPTO_OK;
 	}
 
+	crypto_log_error("Could not hash the password using Argon2");
 	return CRYPTO_FAILURE;		
 }
 

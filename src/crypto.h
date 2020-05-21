@@ -34,12 +34,12 @@ enum Crpyto_SymCyp {
 
 #define KEY_LEN 32
 #define HASH_LEN 32
-#define SALT_LEN 16
+#define SALT_LEN 32
 #define IV_LEN 16
 
-#define T_COST 4
-#define M_COST 12
-#define PARA_COST 1
+#define T_COST (uint32_t)(4)
+#define M_COST (uint32_t)(4096)
+#define PARA_COST (uint32_t)(1)
 
 
 /*

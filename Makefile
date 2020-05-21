@@ -5,10 +5,10 @@ TARGET_ARCH =
 
 CFLAGS = 
 CPPFLAGS = -fPIC -shared 
-OUTPUT_OPTION = -Wall -Werror -Wextra -o $@ 
+OUTPUT_OPTION = -O2 -g -Wall -Werror -Wextra -pedantic -o $@ 
 
 LDFLAGS = -fPIC -shared 
-LDLIBS = -lmosquitto -lcrypto -lmariadb -largon2 
+LDLIBS = -lconfig -lcrypto -lmariadb -largon2 
 LOADLIBES =  
 
 SRCDIR = src/
@@ -35,7 +35,7 @@ all: $(OUTLIB)
 #	$(Q)
 
 $(OUTLIB): $(BUILD)
-	@ echo "AR	$@"
+	@ echo "LINK	$@"
 	$(Q) $(LINK.o) $^ -o $@ $(LOADLIBES) $(LDLIBS) 
 
 $(BUILDDIR)%.o: %.c

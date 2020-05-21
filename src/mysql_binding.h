@@ -1,17 +1,53 @@
 #pragma once
 
 #include <mysql/mysql.h>
+#include <libconfig.h>
 
-#define LOCALHOST NULL
-#define DB_NAME "test"
-#define DB_UNIX_SOCKET "/run/mysqld/mysqld.sock"
+#define MYSQL_DEFAULT_HOST NULL
+#define MYSQL_DEFAULT_PORT 0 
+#define MYSQL_DEFAULT_AUTH_SOCKET "/run/mysqld/mysqld.sock"
+
+#define MYSQL_DEFAULT_DB_NAME "mosquitto_auth"
+#define MYSQL_DEFAULT_CREDS_TAB_NAME "unpwd_client"
+#define MYSQL_DEFAULT_PSK_TAB_NAME "psk"
+#define MYSQL_DEFAULT_MASTER_PSK_TAB_NAME "master_psk"
+#define MYSQL_DEFAULT_ACL_TAB_NAME "acl"
 
 #define NO_PORT 0
 #define NO_FLAG 0
 
+#define MAX_STMT_LEN 200
+
+struct mysql_settings{
+	MYSQL * handler;
+
+	MYSQL_STMT *stmt_salt;
+	MYSQL_STMT *stmt_psk;
+	MYSQL_STMT *stmt_auth;
+
+	int port;
+
+	const char *username;
+	const char *password;
+
+	const char *host;
+	const char *unix_socket;
+
+	const char *db_name;
+	const char *creds_tab_name;	
+	const char *psk_tab_name;
+	const char *acl_group_tab_name;
+};
+
+extern const char *mysql_cfg_setting;
+extern const char *mysql_string_settings[];
+extern const char *mysql_int_setting[];
+extern const char *mysql_bool_setting[];
+
+extern const struct DB_settings_layout mysql_set_layout;
 
 /*
- * Function: mysql_init
+ * Function: mysql_cfg_init
  *
  * This function initializes the MySQL Handler. It is called only once, 
  * the first time the plugin is loaded
@@ -20,7 +56,7 @@
  * 	DB_SUCCESS if the handler is correctly initialized
  * 	DB_FAILURE if the handler cannot be initialized
  */
-int mysql_db_init(void);
+int mysql_cfg_init(struct DB_instance *db_i);
 
 /*
  * Function: mysql_connect
@@ -43,7 +79,7 @@ int mysql_db_init(void);
  *	DB_FAILURE if the connection to the DB failed
  *
  */
-int mysql_connect(const char *username, const char *password);
+int mysql_connect();
 
 /*
  * Function : mysql_disconnect

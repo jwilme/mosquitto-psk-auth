@@ -1,29 +1,18 @@
 #include <mysql/mysql.h>
 #include <stdlib.h>
+#include <string.h>
 #include <stddef.h>
-#include <mosquitto.h>
 
-#include "mosquitto_plugin.h"
+#include <mosquitto.h>
+#include <mosquitto_plugin.h>
 
 #include "db_common.h"
-#include "mysql_binding.h"
+#include "cfg_parser.h"
 #include "plugin_log.h"
 #include "auth.h"
-#include "crypto.h"
 #include "plugin.h"
 
-#define LOG_PLUGIN_ERROR 	"[PLUGIN - ERROR] ::"
-#define LOG_PLUGIN_WARNING 	"[PLUGIN - WARNING] ::"
-#define LOG_PLUGIN_INFO 	"[PLUGIN - INFO] ::"
-
-#define plugin_log_error(...) \
-	plugin_log(LOG_PLUGIN_ERROR, __VA_ARGS__)
-
-#define plugin_log_warning(...) \
-       	plugin_log(LOG_PLUGIN_WARNING, __VA_ARGS__)
-
-#define plugin_log_info(...) \
-	plugin_log(LOG_PLUGIN_INFO, __VA_ARGS__) 
+#define DB_I ((struct DB_instance *)(user_data))
 
 /*
  * Function: mosquitto_auth_plugin_version
@@ -132,23 +121,36 @@ int mosquitto_auth_security_init(void *user_data, struct mosquitto_opt *opts,
 {
 	(void)(opts);
 	
+	char * filename = NULL; 
+
 	if(reload){
 		plugin_log_info("Reloading the DB Plugin");
 	}
 
-	if(opt_count == 0){
-		plugin_log_error("No option specified for the plugin");
+	if(opt_count > 1){
+		plugin_log_error("More than one option has been passed to"
+				"the plugin.");
 		return PLUGIN_FAILURE;
-	}
+	} 
+	
+	else if(opt_count == 0){
+		plugin_log_fatal("No configuration file given to the plugin. "
+				"The plugin requires a configuration file.");
+		return PLUGIN_FAILURE;	
+	} 
+	
+	else if(strcmp(opts[0].key, "config_file_path")){
+		plugin_log_info("Loading configuration from %s", 
+				opts[0].value); 
+		filename = opts[0].value;
+	}	
 
-	for(int i = 0; i < opt_count; i++){
-		;	
-	}
-
+	configure_plugin((const char *)filename, DB_I);
 
 	auth_init(DB_I);
-	auth_connect_db();
-	auth_master_psk();
+	if(auth_connect_db() || auth_master_psk())
+		return PLUGIN_FAILURE;
+
 
 	return PLUGIN_SUCCESS;
 }
@@ -246,8 +248,6 @@ int mosquitto_auth_unpwd_check(void *user_data, struct mosquitto *client,
 	
 	(void)(user_data);
 	(void)(client);
-	(void)(username);
-	(void)(password);
 
 	switch(auth_client(username, password)){
 
@@ -255,7 +255,8 @@ int mosquitto_auth_unpwd_check(void *user_data, struct mosquitto *client,
 		return MOSQ_ERR_SUCCESS;
 
 	case(AUTH_DENIED):
-		plugin_log_warning("Authentication denied for user '%s'");
+		plugin_log_warning("Authentication denied for user '%s'", 
+				username);
 		return MOSQ_ERR_AUTH;
 
 	default:
@@ -288,7 +289,7 @@ int mosquitto_auth_unpwd_check(void *user_data, struct mosquitto *client,
  *	Return >0 on failure.
  *	Return MOSQ_ERR_PLUGIN_DEFER if your plugin does not wish to handle this check.
  */
-int mosquitto_auth_psk_key_get(void *user_data, struct mosquitto *client, 
+/*int mosquitto_auth_psk_key_get(void *user_data, struct mosquitto *client, 
 		const char *hint, const char *identity, char *key, 
 		int max_key_len)
 {
@@ -306,4 +307,4 @@ int mosquitto_auth_psk_key_get(void *user_data, struct mosquitto *client,
 		plugin_log_info("Identity '%s' not found in the DB");
 
 	return PLUGIN_FAILURE;	
-}
+}*/
