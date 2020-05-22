@@ -200,7 +200,7 @@ int mysql_pw_check(const char *username, const char *hash_buff,
 
 	_mysql_stmt_bind_param(set.stmt_auth, auth_query_bind, 2,
 		MYSQL_TYPE_STRING, username, strlen(username),
-		MYSQL_TYPE_BLOB, hash_buff, (HASH_LEN+1)*sizeof(char));
+		MYSQL_TYPE_BLOB, hash_buff, (2*HASH_LEN));
 
 	if(mysql_stmt_execute(set.stmt_auth)){
 		mysql_log_error("(Username : %s) Error on exec : %s", username, 

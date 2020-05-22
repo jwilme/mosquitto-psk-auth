@@ -219,12 +219,12 @@ int mosquitto_auth_security_cleanup(void *user_data, struct mosquitto_opt *opts,
 int mosquitto_auth_acl_check(void *user_data, int access, 
 		struct mosquitto *client, const struct mosquitto_acl_msg *msg)
 {
-	// XXX : For the time being, allow all :
 	(void)(user_data);
 	(void)(access);
 	(void)(client);
 	(void)(msg);
 
+	// XXX : For the time being, allow all :
 	return MOSQ_ERR_SUCCESS;	
 }
 
@@ -248,6 +248,10 @@ int mosquitto_auth_unpwd_check(void *user_data, struct mosquitto *client,
 	
 	(void)(user_data);
 	(void)(client);
+
+	if(!username || !password || strlen(username)<5 || strlen(password)<5 )
+		return MOSQ_ERR_AUTH;
+
 
 	switch(auth_client(username, password)){
 

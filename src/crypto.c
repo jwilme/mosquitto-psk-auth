@@ -31,9 +31,14 @@
 int hash_password(const char * password, const char * salt, char * hash){
 	int pwd_len = strlen(password);
 	int salt_len = strlen(salt); 
+	char tmp[HASH_LEN];
 
 	if(argon2i_hash_raw(T_COST, M_COST, PARA_COST, password, pwd_len, salt, 
-			salt_len, hash, HASH_LEN) == ARGON2_OK){
+			salt_len, tmp, HASH_LEN) == ARGON2_OK){
+
+		for(int i = 0; i< HASH_LEN; i++){
+			sprintf(hash + 2*i, "%02x", ((uint8_t *)tmp)[i]);
+		}
 		return CRYPTO_OK;
 	}
 

@@ -61,7 +61,7 @@ int auth_client(const char * username, const char * password)
 	long long int result;
 
 	char *salt_buf = (char *)malloc(sizeof(char) * (SALT_LEN+1));
-	char *hash_buf = (char *)malloc(sizeof(char) * (HASH_LEN+1));
+	char *hash_buf = (char *)malloc(sizeof(char) * (HASH_LEN*2));
 
 	int ret = db_i->get_salt(username, salt_buf);
 	if(ret == DB_FAILURE)
