@@ -1,12 +1,7 @@
-#include <termios.h>
-#include <string.h>
-#include <stddef.h>
 #include <stdlib.h>
+#include <stddef.h>
 #include <stdio.h>
-
-#include <mosquitto.h>
-#include <mosquitto_broker.h>
-#include <mosquitto_plugin.h>
+#include <string.h>
 
 #include "db_common.h"
 #include "crypto.h"
@@ -28,18 +23,9 @@
 
 
 struct DB_instance *db_i;
-char * psk_master_key;
 
 int auth_init(struct DB_instance *db_inst){
 	db_i = db_inst;	
-
-	psk_master_key = (char *)malloc(sizeof(char *) * KEY_LEN);	
-	if(!psk_master_key){
-		auth_log_error("Could not allocate memory for the"
-				"psk_master_key");
-		return AUTH_FAILURE;
-	}
-
 	return AUTH_SUCCESS;
 }
 
@@ -87,28 +73,13 @@ int auth_client(const char * username, const char * password)
 
 int auth_get_psk(const char * identity, char * psk_key)
 {
-
-	char *init_vector = (char *) malloc(sizeof(char) * IV_LEN); 
-	char *cyphered_key = (char *) malloc(sizeof(char) * KEY_LEN);
-	
-	if(db_i->fetch_psk_key(identity, init_vector, cyphered_key)){ 
-		free(cyphered_key);
-		free(init_vector);
-
-		return AUTH_FAILURE;
-	} 
-	
-	int decypher_error = decypher_key(psk_master_key, cyphered_key, init_vector, psk_key);
-	free(cyphered_key);
-	free(init_vector);
-
-	return decypher_error ? AUTH_FAILURE: AUTH_SUCCESS;	
+	(void)(identity);
+	(void)(psk_key);
+	return AUTH_FAILURE;
 }
 
 int auth_disconnect(){
 	db_i->disconnect();
-
-	free(psk_master_key);	
 	return AUTH_SUCCESS;
 }
 

@@ -6,35 +6,33 @@ enum Auth_ErrorCodes {
 	AUTH_FAILURE = 2,
 };
 
-#define MASTER_PSK_USERNAME "master_psk"
 #define MAX_CREDENTIAL_SIZE 40
 #define RETRY_LIMITS 3
 
 /*
  * Function: auth_init
  *
- * This function initializes all authentication structure according to the
- * given mosquitto options, and the options set in the plugin config file
+ * This function receives the initialized DB_instance for the session that
+ * will allow it to call the different back_end functions when needed. 
  *
  * Parameters:
+ *	db_inst : 	a pointer to an initialized DB_instance structure 
  *
  * Return Value:
- *
+ *	AUTH_SUCCESS
+ *	
  */
 int auth_init(struct DB_instance *db_inst);
 
 /*
  * Function: auth_connect_db 
  *
- * This functions prompts for a password in the standard input, and will 
- * attempt to connect to the DB using the given credentials.
- *
- * For the moment, the username to connect to the database is fetched from
- * the plugin configuration file.
+ * This function attempts to connect to the database. It is called only
+ * when the plugin is started or reloaded
  *
  * Return value:
- * 	AUTH_SUCCESS if the connection is established to the database
- * 	AUTH_DENIED if the connection attemp fails "RETRY_LIMITS" times
+ * 	AUTH_SUCCESS if a connection has been established with the DB
+ * 	AUTH_DENIED if not
  */
 int auth_connect_db(void);
 
@@ -42,34 +40,21 @@ int auth_connect_db(void);
  * Function: auth_master_psk 
  *
  * This function will generate the psk_master_key used to decypher the
- * PSK stored in the DB. It does it in three steps :
+ * clients' PSK stored in the DB. 
  *
- * 	1. It prompts for the psk_master_password
- * 	2. This password is then used to (bref, j'ai compris)
- * 	3. If the couple Username/Password matches, then the password is salted
- * 	   using the master_psk_user's salt, and hashed using SHA-256
- * 	
+ * XXX : At the moment, it is not decided how this should be done. Therefore,
+ * this function has no effect and, unless the psk_plugin function is 
+ * implemented, is never call.
  *
- * Parameters: 
- *	psk_generated_key:	An allocated buffer where the master key will
- *				be stored once generated
  * Return value:
- * 	AUTH_SUCCESS 	if the master key has been generated
- * 	AUTH_DENIED 	if the checking of the password fails three times in a
- * 			a row. The checking fails if : 
- * 				- The given password is wrong 
- * 				- No password could be fetched from the 
- * 				  standard input
- * XXX:
- * 	For the moment, the master_psk_username is a constant. In the future, 
- * 	it could be nice for it be set manually e.g. through a config file
+ * 	AUTH_SUCCESS all the time	
  */
 int auth_master_psk(void);
 
 /*
  * Function: auth_client 
  *
- * This function checks in that the client that attempts 
+ * This function checks that the client that attempts 
  * to connect to the broker is giving valid credentials.
  *
  * It does it in three steps :
@@ -91,12 +76,13 @@ int auth_master_psk(void);
  *	AUTH_DENIED if the credentials given by the client are not valid
  *	AUTH_FAILURE if the check of the credentials could not be completed
  *
+ * TODO:
+ * 	It could be interesting to be able to set the parameter of Argon2 on a
+ * 	per-client basis, depending for example, on the level of privileges a 
+ * 	client has.
  *
- * FIXME : 
- * 	If the salt cannot be fetched because the DB returned a null row, it
- * 	probably means that the username does not exist in the database and, 
- * 	in this case, the function should return AUTH_DENIED and not 
- * 	AUTH_FAILURE
+ * 	It could also be interesting to be able to chose which hash algorithm 
+ * 	is used on a per-client basis as well. 
  */
 int auth_client(const char *username, const char *password);
 
@@ -106,31 +92,25 @@ int auth_client(const char *username, const char *password);
  * This function retrieves the Pre-Shared-Key stored in the DB and associated 
  * to the identiy provided by the client.
  *
- * It does it in two steps :
- * 	1. It retrieves the cyphered PSK and its salt from the DB
- * 	2. It uncyphers it using the AES256-CBC algorithm
+ * XXX : This function at the moment does not nothing, and is never called
+ * unless the psk plugin function is implemented, in which case, this 
+ * function directly returns AUTH_FAILURE
  *
  * Parameters:
  * 	identity: A C-String that contains the identity provided by the client
  * 	psk_key: An allocated buffer where the uncyphered PSK will be stored
  *
  * Return value:
- * 	AUTH_SUCCESS if the PSK has been retrieved and correctly uncyphered
- * 	AUTH_DENIED if the identity was not foud in the DB
  * 	AUTH_FAILURE if the key could not be fetched or uncyphered
  *
- * FIXME: 
- *	At the moment, if the identity does not exists in the DB, the function
- *	returns AUTH_FAILURE, when it should return AUTH_DENIED.
  */
 int auth_get_psk(const char *identity, char *psk_key);
 
 /*
  * Function: auth_disconnect
  * 
- * This function disconnects the Database, and frees all the structures
- * that were initialized from the auth source file when the plugin started 
- * up
+ * This function disconnects the database, and frees all the structures
+ * and buffer that are not usefull anymore.
  *
  * Return value:
  *	AUTH_SUCCESS all the time
@@ -142,7 +122,7 @@ int auth_disconnect(void);
  * Function: auth_cleanup
  *
  * This function performs the cleanup of the DB structure when the plugin is 
- * about to be ended
+ * about to be ended.
  *
  * Return value:
  *	AUTH_SUCCESS all the time
