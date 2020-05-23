@@ -120,12 +120,9 @@ int mosquitto_auth_security_init(void *user_data, struct mosquitto_opt *opts,
 		int opt_count, bool reload)
 {
 	(void)(opts);
-	
-	char * filename = NULL; 
+	(void)(reload);	
 
-	if(reload){
-		plugin_log_info("Reloading the DB Plugin");
-	}
+	char * filename = NULL; 
 
 	if(opt_count > 1){
 		plugin_log_error("More than one option has been passed to"
@@ -134,7 +131,7 @@ int mosquitto_auth_security_init(void *user_data, struct mosquitto_opt *opts,
 	} 
 	
 	else if(opt_count == 0){
-		plugin_log_fatal("No configuration file given to the plugin. "
+		plugin_log_error("No configuration file given to the plugin. "
 				"The plugin requires a configuration file.");
 		return PLUGIN_FAILURE;	
 	} 
@@ -145,12 +142,14 @@ int mosquitto_auth_security_init(void *user_data, struct mosquitto_opt *opts,
 		filename = opts[0].value;
 	}	
 
-	configure_plugin((const char *)filename, DB_I);
-
-	auth_init(DB_I);
-	if(auth_connect_db() || auth_master_psk())
+	int err = configure_plugin((const char *)filename, DB_I);
+	if(err == CFG_ERROR)
 		return PLUGIN_FAILURE;
 
+	auth_init(DB_I);
+
+	if(auth_connect_db() || auth_master_psk())
+		return PLUGIN_FAILURE;
 
 	return PLUGIN_SUCCESS;
 }
