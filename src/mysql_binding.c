@@ -45,7 +45,7 @@ const char *mysql_int_setting[] = {"db_port"};
 
 
 
-const struct DB_settings_layout mysql_set_layout = {
+const struct Settings_layout mysql_set_layout = {
 	.str_setting_cnt = STR_CNT,
 	.int_setting_cnt = INT_CNT,
 	.bool_setting_cnt = BOOL_CNT,

@@ -44,7 +44,7 @@ extern const char *mysql_string_settings[];
 extern const char *mysql_int_setting[];
 extern const char *mysql_bool_setting[];
 
-extern const struct DB_settings_layout mysql_set_layout;
+extern const struct Settings_layout mysql_set_layout;
 
 /*
  * Function: mysql_cfg_init

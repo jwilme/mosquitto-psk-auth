@@ -14,7 +14,7 @@ typedef int 	(*DB_pw_check)(const char *, const char *, long long int *);
 typedef int 	(*DB_get_salt)(const char *, char *); 
 typedef int 	(*DB_fetch_psk_key)(const char *, char *, char *);
 
-struct DB_settings_layout{
+struct Settings_layout{
 	int str_setting_cnt;
 	int int_setting_cnt;
 	int bool_setting_cnt;

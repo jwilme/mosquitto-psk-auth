@@ -11,32 +11,34 @@
 #include "plugin.h"
 #include "cfg_parser.h"
 
-int _set_parameter(config_setting_t *field, const char *name, int type, 
+int _set_parameter(config_setting_t *field, int type,
 		int cnt, const char **settings, 
-		const struct DB_settings_layout *db_set_map)
+		const struct Settings_layout *set_map)
 {  
+	const char *name = config_setting_name(field);
+
 	for(int i = 0; i < cnt; i++){
 		if(!strcmp(settings[i], name)){	
 			if(type == CONFIG_TYPE_INT){
-				int *fst = db_set_map->int_first + i;
+				int *fst = set_map->int_first + i;
 				*fst = config_setting_get_int(field);
 				return CFG_SUCCESS;
 			}
 			
 			else if(type == CONFIG_TYPE_STRING){
 				const char **fst;
-				fst = db_set_map->str_first + i;
+				fst = set_map->str_first + i;
 				*fst = config_setting_get_string(field);
 				return CFG_SUCCESS;
 			}
 
 			else if(type == CONFIG_TYPE_BOOL){
-				int *fst = db_set_map->bool_first + i;
+				int *fst = set_map->bool_first + i;
 				*fst = config_setting_get_bool(field);
 				return CFG_SUCCESS;
 			}
 		}
-	}	
+	}
 
 	plugin_log_error("<%s:%d-%s> : This option does not" 
 			"exist for the given back-end.",
@@ -46,8 +48,8 @@ int _set_parameter(config_setting_t *field, const char *name, int type,
 	return CFG_ERROR;
 }
 
-int read_be_parameters(config_t *cfg, const char *setting_name,
-		const struct DB_settings_layout *db_set_map)
+int read_parameters(config_t *cfg, const char *setting_name,
+		const struct Settings_layout *set_map)
 {
 	int count;
 	config_setting_t * setting = config_lookup(cfg, setting_name);
@@ -63,7 +65,6 @@ int read_be_parameters(config_t *cfg, const char *setting_name,
 
 	for(int i = 0; i < count; i++){
 		config_setting_t *field = config_setting_get_elem(setting, i);
-		const char *name = config_setting_name(field);
 		int type = config_setting_type(field); 
 
 		const char **settings;
@@ -71,18 +72,18 @@ int read_be_parameters(config_t *cfg, const char *setting_name,
 	
 		switch(type){
 		case(CONFIG_TYPE_INT):
-			cnt = db_set_map->int_setting_cnt;
-			settings = db_set_map->int_settings;
+			cnt = set_map->int_setting_cnt;
+			settings = set_map->int_settings;
 			break;
 	
 		case(CONFIG_TYPE_STRING):
-			cnt = db_set_map->str_setting_cnt;
-			settings = db_set_map->str_settings;
+			cnt = set_map->str_setting_cnt;
+			settings = set_map->str_settings;
 			break;
 		
 		case(CONFIG_TYPE_BOOL):
-			cnt = db_set_map->bool_setting_cnt;
-			settings = db_set_map->bool_settings;
+			cnt = set_map->bool_setting_cnt;
+			settings = set_map->bool_settings;
 			break;
 	
 		default:
@@ -90,17 +91,14 @@ int read_be_parameters(config_t *cfg, const char *setting_name,
 					"configuration is not allowed",
 					config_setting_source_file(field),
 					config_setting_source_line(field),
-					name);
+					config_setting_name(field));
 
 			plugin_log_fatal("Only type INT, STRING or BOOL is "
 					"allowed in theconfiguration file");
 
 			return CFG_ERROR;	
 		}
-
-		int err = (_set_parameter(field, name, type, cnt, settings, 
-					db_set_map));
-		if(err) 
+		if(_set_parameter(field, type, cnt, settings, set_map))
 			return CFG_ERROR;
 	}
 	return CFG_SUCCESS;
@@ -126,7 +124,7 @@ int configure_plugin(const char *filename, struct DB_instance *db_i){
 	if(config_lookup_string(cfg, "back_end", &str)){
 		if(!strcmp(str, "mysql")){
 			mysql_cfg_init(db_i);
-			read_be_parameters(cfg, mysql_cfg_setting, &mysql_set_layout);
+			read_parameters(cfg, mysql_cfg_setting, &mysql_set_layout);
 			return CFG_SUCCESS;
 		} else {
 			return CFG_ERROR;	
