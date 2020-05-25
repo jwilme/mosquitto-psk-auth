@@ -51,8 +51,13 @@ extern const struct Settings_layout mysql_set_layout;
 /*
  * Function: mysql_cfg_init
  *
- * This function initializes the MySQL Handler. It is called only once, 
- * the first time the plugin is loaded
+ * This function initializes the MySQL Handler, gives default value to 
+ * the MySQL's setting structure, and assigns the DB_instance structure
+ * with the mysql_binding functions 
+ *
+ * Parameters:
+ * 	db_i:		A pointer to a DB_instance structure that is going
+ * 			to be assign with the mysql_binding functions 
  *
  * Return value:
  * 	DB_SUCCESS if the handler is correctly initialized
