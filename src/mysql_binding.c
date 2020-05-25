@@ -189,7 +189,9 @@ void mysql_close_statements()
 	mysql_log_info("Closing all statements");
 
 	free(str_salt);
+#ifdef TLS_PSK
 	free(str_psk);
+#endif 
 	free(str_unpwd);
 
 	mysql_stmt_close(set.stmt_salt);
@@ -332,4 +334,4 @@ int mysql_fetch_psk_key(const char * identity, char * iv, char * key)
 
 	return DB_FAILURE;	
 }	
-#endif
+#endif //TLS_PSK
