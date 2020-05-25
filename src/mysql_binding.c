@@ -69,7 +69,9 @@ int mysql_cfg_init(struct DB_instance *db_i)
 	set.unix_socket = MYSQL_DEFAULT_AUTH_SOCKET;
 	set.db_name = MYSQL_DEFAULT_DB_NAME;
 	set.creds_tab_name = MYSQL_DEFAULT_CREDS_TAB_NAME;
+#ifdef TLS_PSK
 	set.psk_tab_name = MYSQL_DEFAULT_PSK_TAB_NAME;
+#endif
 	set.acl_group_tab_name = MYSQL_DEFAULT_ACL_TAB_NAME;
 
 	//Set the Function of the DB_instance
@@ -78,7 +80,9 @@ int mysql_cfg_init(struct DB_instance *db_i)
 	db_i->cleanup = mysql_cleanup;
 	db_i->pw_check = mysql_pw_check;
 	db_i->get_salt = mysql_get_salt;
+#ifdef TLS_PSK
 	db_i->fetch_psk_key = mysql_fetch_psk_key;
+#endif
 
 	return DB_SUCCESS;
 }
@@ -164,10 +168,12 @@ void mysql_prepare_statements()
 	set.stmt_salt = mysql_stmt_init(set.handler); 
 	(void)mysql_stmt_prepare(set.stmt_salt, str_salt, strlen(str_salt));
 
+#ifdef TLS_PSK
 	str_psk = (char *)malloc(sizeof(char) * MAX_STMT_LEN);
 	snprintf(str_psk, MAX_STMT_LEN, PSK_QUERY, set.psk_tab_name); 
 	set.stmt_psk = mysql_stmt_init(set.handler); 
 	(void)mysql_stmt_prepare(set.stmt_psk, str_psk, strlen(str_psk));
+#endif
 
 	str_unpwd = (char *)malloc(sizeof(char) * MAX_STMT_LEN);
 	snprintf(str_unpwd, MAX_STMT_LEN, UNPWD_QUERY, set.creds_tab_name); 
@@ -283,6 +289,7 @@ int mysql_get_salt(const char *username, char *salt_buf)
 	return DB_FAILURE;
 }
 
+#ifdef TLS_PSK
 int mysql_fetch_psk_key(const char * identity, char * iv, char * key)
 {
 	MYSQL_BIND psk_query_bind[1], psk_result_bind[2];
@@ -325,3 +332,4 @@ int mysql_fetch_psk_key(const char * identity, char * iv, char * key)
 
 	return DB_FAILURE;	
 }	
+#endif

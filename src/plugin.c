@@ -148,7 +148,11 @@ int mosquitto_auth_security_init(void *user_data, struct mosquitto_opt *opts,
 
 	auth_init(DB_I);
 
+#ifdef TLS_PSK
 	if(auth_connect_db() || auth_master_psk())
+#else
+	if(auth_connect_db())
+#endif
 		return PLUGIN_FAILURE;
 
 	return PLUGIN_SUCCESS;
@@ -292,7 +296,8 @@ int mosquitto_auth_unpwd_check(void *user_data, struct mosquitto *client,
  *	Return >0 on failure.
  *	Return MOSQ_ERR_PLUGIN_DEFER if your plugin does not wish to handle this check.
  */
-/*int mosquitto_auth_psk_key_get(void *user_data, struct mosquitto *client, 
+#ifdef TLS_PSK
+int mosquitto_auth_psk_key_get(void *user_data, struct mosquitto *client, 
 		const char *hint, const char *identity, char *key, 
 		int max_key_len)
 {
@@ -310,4 +315,5 @@ int mosquitto_auth_unpwd_check(void *user_data, struct mosquitto *client,
 		plugin_log_info("Identity '%s' not found in the DB");
 
 	return PLUGIN_FAILURE;	
-}*/
+}
+#endif //TLS_PSK

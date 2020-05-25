@@ -35,7 +35,9 @@ struct mysql_settings{
 
 	const char *db_name;
 	const char *creds_tab_name;	
+#ifdef TLS_PSK
 	const char *psk_tab_name;
+#endif
 	const char *acl_group_tab_name;
 };
 
@@ -278,4 +280,6 @@ int mysql_get_salt(const char *username, char *salt_buf);
  * 	DB_FAILURE on failure
  *
  */
+#ifdef TLS_PSK
 int mysql_fetch_psk_key(const char *identity, char *iv, char *key);
+#endif 

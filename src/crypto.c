@@ -46,6 +46,7 @@ int hash_password(const char * password, const char * salt, char * hash){
 	return CRYPTO_FAILURE;		
 }
 
+#ifdef TLS_PSK
 int compute_master_key(const char *password, const char *salt, char *out)
 {
 	int len = strlen(password) + strlen(salt);
@@ -66,7 +67,9 @@ int compute_master_key(const char *password, const char *salt, char *out)
 
 	return CRYPTO_OK;
 }
+#endif //TLS_PSK
 
+#ifdef TLS_PSK
 int decypher_key(const char * key, const char * cypher, 
 		const char * iv, char * out_key)
 {
@@ -114,3 +117,4 @@ decypher_cleanup:
 	EVP_CIPHER_CTX_free(ctx);
 	return err ? CRYPTO_FAILURE : CRYPTO_OK;
 }
+#endif //TLS_PSK

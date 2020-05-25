@@ -49,7 +49,9 @@ int auth_connect_db(void);
  * Return value:
  * 	AUTH_SUCCESS all the time	
  */
+#ifdef TLS_PSK
 int auth_master_psk(void);
+#endif
 
 /*
  * Function: auth_client 
@@ -104,7 +106,9 @@ int auth_client(const char *username, const char *password);
  * 	AUTH_FAILURE if the key could not be fetched or uncyphered
  *
  */
+#ifdef TLS_PSK
 int auth_get_psk(const char *identity, char *psk_key);
+#endif
 
 /*
  * Function: auth_disconnect

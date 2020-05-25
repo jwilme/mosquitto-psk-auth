@@ -36,10 +36,12 @@ int auth_connect_db()
 	return AUTH_SUCCESS;
 }
 
+#ifdef TLS_PSK
 int auth_master_psk()
 {
 	return AUTH_SUCCESS;
 }
+#endif
 
 int auth_client(const char * username, const char * password)
 {
@@ -71,12 +73,14 @@ int auth_client(const char * username, const char * password)
 	return (result == 1) ? AUTH_SUCCESS : AUTH_DENIED;
 }
 
+#ifdef TLS_PSK
 int auth_get_psk(const char * identity, char * psk_key)
 {
 	(void)(identity);
 	(void)(psk_key);
 	return AUTH_FAILURE;
 }
+#endif
 
 int auth_disconnect(){
 	db_i->disconnect();
